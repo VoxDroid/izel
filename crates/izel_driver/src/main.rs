@@ -28,8 +28,18 @@ fn main() -> Result<()> {
     println!("Parsing CST...");
     let mut parser = izel_parser::Parser::new(tokens);
     let cst = parser.parse_source_file();
-    println!("CST Structure:");
-    print_cst(&izel_parser::cst::SyntaxElement::Node(cst), 0);
+    
+    println!("Generating LLVM IR...");
+    let context = inkwell::context::Context::create();
+    let mut codegen = izel_codegen::Codegen::new(&context, "main", &source);
+    codegen.gen_source_file(&cst)?;
+
+    println!("--- LLVM IR ---\n{}", codegen.emit_llvm_ir());
+    println!("---------------\n");
+
+    if session.options.run {
+        codegen.run_jit()?;
+    }
     
     Ok(())
 }

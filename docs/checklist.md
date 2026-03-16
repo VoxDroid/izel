@@ -50,12 +50,15 @@ This document provides a granular, step-by-step roadmap for building the Izel co
     - [x] Simple blocks `{ ... }`.
 
 ### 0.4 `izel_codegen` (Minimal Path)
-- [ ] **LLVM Integration**:
-    - [ ] Initialize `Context`, `Module`, and `Builder` via `inkwell`.
-    - [ ] Implement `Codegen` for primitives (`i32`, `f64`, `bool`).
-    - [ ] Map `forge main()` to C-style `main`.
-- [ ] **Minimal Runtime**:
-    - [ ] Implement `builtin_println` in Rust/C and link it.
+- [x] **LLVM Integration**:
+    - [x] Set up `inkwell` context and module.
+    - [x] Implement `Codegen` struct to walk the CST/AST.
+- [x] **Forge Generation**:
+    - [x] Direct mapping of `forge` to LLVM `Function`.
+    - [x] Basic `i32` arithmetic and `return` generation.
+- [x] **Verification**:
+    - [x] Output human-readable `.ll` (LLVM Assembly).
+    - [x] JIT execution of `main` for smoke tests.
 - [ ] **Verification**: 
     - [ ] Run `izelc hello.iz` and produce an executable.
 

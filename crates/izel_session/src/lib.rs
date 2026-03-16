@@ -21,6 +21,10 @@ pub struct SessionOptions {
     /// Optimize the output binary.
     #[arg(short = 'O', long, default_value = "0")]
     pub opt: String,
+
+    /// Run the code after compilation using JIT.
+    #[arg(long)]
+    pub run: bool,
 }
 
 pub struct Session {

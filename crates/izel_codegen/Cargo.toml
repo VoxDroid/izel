@@ -1,5 +1,5 @@
 [package]
-name = "izel_driver"
+name = "izel_codegen"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -8,15 +8,7 @@ repository.workspace = true
 
 [dependencies]
 izel_span = { path = "../izel_span" }
-izel_session = { path = "../izel_session" }
-izel_lexer = { path = "../izel_lexer" }
 izel_parser = { path = "../izel_parser" }
-izel_codegen = { path = "../izel_codegen" }
-izel_diagnostics = { path = "../izel_diagnostics" }
+inkwell = { workspace = true }
 anyhow = { workspace = true }
-clap = { workspace = true }
 tracing = { workspace = true }
-
-[[bin]]
-name = "izelc"
-path = "src/main.rs"

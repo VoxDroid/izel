@@ -6,6 +6,7 @@ members = [
     "crates/izel_diagnostics",
     "crates/izel_lexer",
     "crates/izel_parser",
+    "crates/izel_codegen",
     "crates/izel_driver",
 ]
 
