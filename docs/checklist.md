@@ -38,16 +38,16 @@ This document provides a granular, step-by-step roadmap for building the Izel co
     - [ ] Set up `cargo-fuzz` target for the lexer.
 
 ### 0.3 `izel_parser` (CST & AST)
-- [ ] **CST Infrastructure**:
-    - [ ] Define `GreenNode` or equivalent for lossless representation.
-    - [ ] Ensure all whitespace and comments are preserved (trivia).
-- [ ] **Expression Parser (Pratt)**:
-    - [ ] Implement precedence table (14 levels).
-    - [ ] Support pipeline `|>` (level 1) to method calls/path (level 14).
-- [ ] **Declaration Parser**:
-    - [ ] `forge` (functions) with param lists and return types.
-    - [ ] `let` / `~` bindings.
-    - [ ] Simple blocks `{ ... }`.
+- [x] **CST Infrastructure**:
+    - [x] Define `GreenNode` or equivalent for lossless representation.
+    - [x] Ensure all whitespace and comments are preserved (trivia).
+- [x] **Expression Parser (Pratt)**:
+    - [x] Implement precedence table (14 levels).
+    - [x] Support pipeline `|>` (level 1) to method calls/path (level 14).
+- [x] **Declaration Parser**:
+    - [x] Implement `forge` declaration parsing with CST nodes.
+    - [x] Implement `let`/`~` binding and block parsing.
+    - [x] Simple blocks `{ ... }`.
 
 ### 0.4 `izel_codegen` (Minimal Path)
 - [ ] **LLVM Integration**:

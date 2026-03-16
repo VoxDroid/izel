@@ -15,13 +15,36 @@ fn main() -> Result<()> {
     let mut lexer = izel_lexer::Lexer::new(&source, source_id);
 
     println!("Lexing file: {:?}", session.options.input);
+    let mut tokens = Vec::new();
     loop {
         let token = lexer.next_token();
-        println!("Token: {:?} at {:?}", token.kind, token.span);
-        if token.kind == izel_lexer::TokenKind::Eof {
+        let kind = token.kind;
+        tokens.push(token);
+        if kind == izel_lexer::TokenKind::Eof {
             break;
         }
     }
+
+    println!("Parsing CST...");
+    let mut parser = izel_parser::Parser::new(tokens);
+    let cst = parser.parse_source_file();
+    println!("CST Structure:");
+    print_cst(&izel_parser::cst::SyntaxElement::Node(cst), 0);
     
     Ok(())
+}
+
+fn print_cst(element: &izel_parser::cst::SyntaxElement, indent: usize) {
+    let space = "  ".repeat(indent);
+    match element {
+        izel_parser::cst::SyntaxElement::Node(node) => {
+            println!("{}{:?}", space, node.kind);
+            for child in &node.children {
+                print_cst(child, indent + 1);
+            }
+        }
+        izel_parser::cst::SyntaxElement::Token(token) => {
+            println!("{}{:?}", space, token.kind);
+        }
+    }
 }

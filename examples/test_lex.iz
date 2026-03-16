@@ -1,0 +1,1 @@
+forge main() { let r_msg = r#"Raw "string" with hashes"#; let b_msg = b"byte string"; let c = 'a'; }

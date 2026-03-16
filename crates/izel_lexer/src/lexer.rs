@@ -18,13 +18,40 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn next_token(&mut self) -> Token {
-        self.eat_whitespace_and_comments();
-        
         let start = self.pos();
         if self.cursor.is_eof() {
             return Token::new(TokenKind::Eof, self.make_span(start, start));
         }
 
+        let first_char = self.cursor.first();
+        
+        // Handle whitespace
+        if first_char.is_whitespace() {
+            self.cursor.bump();
+            self.cursor.eat_while(|c| c.is_whitespace());
+            return Token::new(TokenKind::Whitespace, self.make_span(start, self.pos()));
+        }
+
+        // Handle comments
+        if first_char == '/' {
+            match self.cursor.second() {
+                '/' => {
+                    self.cursor.bump();
+                    self.cursor.bump();
+                    self.cursor.eat_while(|c| c != '\n' && c != EOF_CHAR);
+                    return Token::new(TokenKind::Comment, self.make_span(start, self.pos()));
+                }
+                '~' => {
+                    self.cursor.bump();
+                    self.cursor.bump();
+                    self.eat_multi_line_comment();
+                    return Token::new(TokenKind::Comment, self.make_span(start, self.pos()));
+                }
+                _ => {}
+            }
+        }
+
+        // Standard tokens
         let first = self.cursor.bump().unwrap();
         let kind = match first {
             // Sigils & Punctuation
@@ -119,14 +146,16 @@ impl<'a> Lexer<'a> {
             ',' => TokenKind::Comma,
             ';' => TokenKind::Semicolon,
 
-            // Identifiers & Keywords
+            // Identifiers, Keywords, Raw/Byte Strings
             c if is_ident_start(c) => self.lex_ident_or_keyword(first),
 
             // Numeric Literals
             c if c.is_ascii_digit() => self.lex_number(first),
 
-            // Strings
+            // Strings & Chars
             '"' => self.lex_string(),
+            '\'' => self.lex_char(),
+            '`' => TokenKind::Unknown, // Interpolated string start handled separately if needed
 
             _ => TokenKind::Unknown,
         };
@@ -136,10 +165,20 @@ impl<'a> Lexer<'a> {
     }
 
     fn lex_ident_or_keyword(&mut self, first: char) -> TokenKind {
-        let start = self.cursor.pos_within(self.source) - first.len_utf8();
-        self.cursor.eat_while(is_ident_continue);
-        let end = self.cursor.pos_within(self.source);
-        let text = &self.source[start..end];
+        let (_, text) = self.eat_ident_text(first);
+
+        // Check for raw/byte prefixes
+        if text == "r" && (self.cursor.first() == '"' || self.cursor.first() == '#') {
+            return self.lex_raw_string();
+        }
+        if text == "b" && (self.cursor.first() == '"' || self.cursor.first() == '\'') {
+            let next = self.cursor.bump().unwrap();
+            if next == '"' {
+                return self.lex_byte_string();
+            } else {
+                return self.lex_byte_literal();
+            }
+        }
 
         match text {
             "forge"    => TokenKind::Forge,
@@ -194,6 +233,13 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn eat_ident_text(&mut self, first: char) -> (usize, &'a str) {
+        let start = self.cursor.pos_within(self.source) - first.len_utf8();
+        self.cursor.eat_while(is_ident_continue);
+        let end = self.cursor.pos_within(self.source);
+        (start, &self.source[start..end])
+    }
+
     fn lex_number(&mut self, first: char) -> TokenKind {
         let mut base = Base::Decimal;
         if first == '0' {
@@ -224,36 +270,85 @@ impl<'a> Lexer<'a> {
                 break;
             }
             if c == '\\' {
-                self.cursor.bump();
+                self.cursor.bump(); // Skip any char for now, simple escape handler
             }
         }
         TokenKind::Str { terminated }
     }
 
-    fn eat_whitespace_and_comments(&mut self) {
-        loop {
-            match self.cursor.first() {
-                c if c.is_whitespace() => {
-                    self.cursor.bump();
-                }
-                '/' => {
-                    match self.cursor.second() {
-                        '/' => {
-                            self.cursor.bump();
-                            self.cursor.bump();
-                            self.cursor.eat_while(|c| c != '\n' && c != EOF_CHAR);
-                        }
-                        '~' => {
-                            self.cursor.bump();
-                            self.cursor.bump();
-                            self.eat_multi_line_comment();
-                        }
-                        _ => break,
-                    }
-                }
-                _ => break,
+    fn lex_byte_string(&mut self) -> TokenKind {
+        let mut terminated = false;
+        while let Some(c) = self.cursor.bump() {
+            if c == '"' {
+                terminated = true;
+                break;
+            }
+            if c == '\\' {
+                self.cursor.bump();
             }
         }
+        TokenKind::ByteStr { terminated }
+    }
+
+    fn lex_char(&mut self) -> TokenKind {
+        let mut terminated = false;
+        if let Some(c) = self.cursor.bump() {
+            if c == '\\' {
+                self.cursor.bump();
+            }
+            if self.cursor.first() == '\'' {
+                self.cursor.bump();
+                terminated = true;
+            }
+        }
+        TokenKind::Char { terminated }
+    }
+
+    fn lex_byte_literal(&mut self) -> TokenKind {
+        let mut terminated = false;
+        if let Some(c) = self.cursor.bump() {
+            if c == '\\' {
+                self.cursor.bump();
+            }
+            if self.cursor.first() == '\'' {
+                self.cursor.bump();
+                terminated = true;
+            }
+        }
+        TokenKind::Byte { terminated }
+    }
+
+    fn lex_raw_string(&mut self) -> TokenKind {
+        let mut hashes = 0;
+        while self.cursor.first() == '#' {
+            self.cursor.bump();
+            hashes += 1;
+        }
+
+        if self.cursor.first() != '"' {
+            return TokenKind::Unknown;
+        }
+        self.cursor.bump();
+
+        let mut terminated = false;
+        loop {
+            match self.cursor.bump() {
+                Some('"') => {
+                    let mut closing_hashes = 0;
+                    while self.cursor.first() == '#' && closing_hashes < hashes {
+                        self.cursor.bump();
+                        closing_hashes += 1;
+                    }
+                    if closing_hashes == hashes {
+                        terminated = true;
+                        break;
+                    }
+                }
+                Some(_) => {}
+                None => break,
+            }
+        }
+        TokenKind::Str { terminated }
     }
 
     fn eat_multi_line_comment(&mut self) {
