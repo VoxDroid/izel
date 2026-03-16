@@ -1,0 +1,37 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/izel_span",
+    "crates/izel_session",
+    "crates/izel_diagnostics",
+    "crates/izel_lexer",
+    "crates/izel_parser",
+    "crates/izel_driver",
+]
+
+[workspace.package]
+version = "0.1.0"
+authors = ["VoxDroid <izeno.contact@gmail.com>"]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/VoxDroid/izel"
+description = "Izel — A unique, multi-paradigm systems programming language."
+
+[workspace.dependencies]
+inkwell = { version = "0.4.0", features = ["llvm17-0"] }
+llvm-sys = "170.0"
+salsa = "0.19.0"
+codespan-reporting = "0.11.1"
+clap = { version = "4.4", features = ["derive"] }
+toml = "0.8.8"
+serde = { version = "1.0", features = ["derive"] }
+anyhow = "1.0"
+thiserror = "1.0"
+tracing = "0.1"
+winnow = "0.6"
+rustc-hash = "1.1"
+indexmap = "2.1"
+petgraph = "0.6"
+string-interner = "0.17"
+smallvec = "1.11"
+bumpalo = "3.14"

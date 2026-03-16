@@ -1,0 +1,20 @@
+[package]
+name = "izel_driver"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+izel_session = { path = "../izel_session" }
+izel_lexer = { path = "../izel_lexer" }
+izel_parser = { path = "../izel_parser" }
+izel_diagnostics = { path = "../izel_diagnostics" }
+anyhow = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+
+[[bin]]
+name = "izelc"
+path = "src/main.rs"

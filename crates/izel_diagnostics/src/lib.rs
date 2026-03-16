@@ -1,0 +1,24 @@
+//! Types and utilities for high-fidelity error reporting.
+
+pub use codespan_reporting::diagnostic::{Severity, LabelStyle};
+use codespan_reporting::diagnostic::{Diagnostic as CsDiagnostic, Label as CsLabel};
+use izel_span::Span;
+
+pub type Diagnostic = CsDiagnostic<izel_span::SourceId>;
+pub type Label = CsLabel<izel_span::SourceId>;
+
+pub fn error(msg: impl Into<String>) -> Diagnostic {
+    Diagnostic::error().with_message(msg)
+}
+
+pub fn warning(msg: impl Into<String>) -> Diagnostic {
+    Diagnostic::warning().with_message(msg)
+}
+
+pub fn primary_label(span: Span, msg: impl Into<String>) -> Label {
+    Label::primary(span.source_id, span.lo.0 as usize..span.hi.0 as usize).with_message(msg)
+}
+
+pub fn secondary_label(span: Span, msg: impl Into<String>) -> Label {
+    Label::secondary(span.source_id, span.lo.0 as usize..span.hi.0 as usize).with_message(msg)
+}

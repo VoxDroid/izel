@@ -1,0 +1,16 @@
+[package]
+name = "izel_session"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+izel_span = { path = "../izel_span" }
+izel_diagnostics = { path = "../izel_diagnostics" }
+clap = { workspace = true }
+serde = { workspace = true, optional = true }
+
+[features]
+serde = ["dep:serde", "izel_span/serde"]

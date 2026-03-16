@@ -1,0 +1,15 @@
+[package]
+name = "izel_diagnostics"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+izel_span = { path = "../izel_span" }
+codespan-reporting = { workspace = true }
+serde = { workspace = true, optional = true }
+
+[features]
+serde = ["dep:serde", "izel_span/serde"]
