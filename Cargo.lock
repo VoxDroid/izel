@@ -234,8 +234,10 @@ dependencies = [
  "izel_lexer",
  "izel_mir",
  "izel_parser",
+ "izel_resolve",
  "izel_session",
  "izel_span",
+ "izel_typeck",
  "tracing",
 ]
 
@@ -271,6 +273,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "izel_resolve"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "izel_lexer",
+ "izel_parser",
+ "izel_span",
+ "rustc-hash",
+ "tracing",
+]
+
+[[package]]
 name = "izel_session"
 version = "0.1.0"
 dependencies = [
@@ -285,6 +299,18 @@ name = "izel_span"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "izel_typeck"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "izel_parser",
+ "izel_resolve",
+ "izel_span",
+ "rustc-hash",
+ "tracing",
 ]
 
 [[package]]
@@ -364,6 +390,12 @@ name = "regex-lite"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cab834c73d247e67f4fae452806d17d3c7501756d98c8808d7c9c7aa7d18f973"
+
+[[package]]
+name = "rustc-hash"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "semver"

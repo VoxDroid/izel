@@ -1,0 +1,15 @@
+[package]
+name = "izel_resolve"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+izel_span = { path = "../izel_span" }
+izel_parser = { path = "../izel_parser" }
+izel_lexer = { path = "../izel_lexer" }
+rustc-hash = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }

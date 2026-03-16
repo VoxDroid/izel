@@ -39,14 +39,68 @@ impl<'a> MirLowerer<'a> {
             if let SyntaxElement::Node(child_node) = child {
                 match child_node.kind {
                     NodeKind::LetStmt => {
-                        // TODO: Handle let properly
+                        self.lower_let(child_node);
                     }
                     NodeKind::ExprStmt => {
-                        // TODO: Handle expr
+                        self.lower_expr_stmt(child_node);
+                    }
+                    NodeKind::Block => {
+                        self.lower_block(child_node);
                     }
                     _ => {}
                 }
             }
+        }
+    }
+
+    fn lower_let(&mut self, node: &SyntaxNode) {
+        let mut _name = "unnamed".to_string();
+        let mut value_node = None;
+
+        for child in &node.children {
+            if let SyntaxElement::Token(token) = child {
+                if token.kind == TokenKind::Ident {
+                    let span = token.span;
+                    _name = self.source[span.lo.0 as usize..span.hi.0 as usize].to_string();
+                }
+            } else if let SyntaxElement::Node(child_node) = child {
+                value_node = Some(child_node);
+            }
+        }
+
+        if let Some(expr) = value_node {
+            let rvalue = self.lower_expr(expr);
+            // StorageLive
+            let local = Local(self.body.blocks.node_weight(self.current_block).unwrap().instructions.len()); 
+            // This is just a placeholder local index
+            
+            let instr = Instruction::Assign(
+                Place { local },
+                rvalue
+            );
+            self.body.blocks.node_weight_mut(self.current_block).unwrap().instructions.push(instr);
+        }
+    }
+
+    fn lower_expr_stmt(&mut self, node: &SyntaxNode) {
+        for child in &node.children {
+            if let SyntaxElement::Node(child_node) = child {
+                self.lower_expr(child_node);
+            }
+        }
+    }
+
+    fn lower_expr(&mut self, node: &SyntaxNode) -> Rvalue {
+        match node.kind {
+            NodeKind::Literal => {
+                // Return a constant
+                Rvalue::Use(Operand::Constant(Constant::Int(0))) // Stub
+            }
+            NodeKind::BinaryExpr => {
+                // Recurse
+                Rvalue::Use(Operand::Constant(Constant::Int(0))) // Stub
+            }
+            _ => Rvalue::Use(Operand::Constant(Constant::Int(0))),
         }
     }
 }

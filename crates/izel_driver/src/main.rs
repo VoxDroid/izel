@@ -31,7 +31,17 @@ fn main() -> Result<()> {
     
     println!("Lowering to MIR...");
     let mut _lowerer = izel_mir::lower::MirLowerer::new(&source);
-    // Future: lowerer.lower_source_file(&cst);
+    
+    println!("Resolving symbols...");
+    let mut resolver = izel_resolve::Resolver::new();
+    resolver.resolve_source_file(&cst, &source);
+    for (name, symbol) in &resolver.root_scope.symbols {
+        println!("Resolved symbol: {} at {:?}", name, symbol.span);
+    }
+
+    println!("Type checking...");
+    let mut _typeck = izel_typeck::TypeChecker::new();
+    _typeck.check_source_file();
 
     println!("Generating LLVM IR...");
     let context = inkwell::context::Context::create();

@@ -59,6 +59,14 @@ This document provides a granular, step-by-step roadmap for building the Izel co
 - [x] **Verification**:
     - [x] Output human-readable `.ll` (LLVM Assembly).
     - [x] JIT execution of `main` for smoke tests.
+
+### 0.5 `izel_mir` (Mid-level IR)
+- [x] **MIR Infrastructure**:
+    - [x] Define `MirBody`, `BasicBlock`, `Instruction`, `Terminator`.
+    - [x] Use `petgraph` for Control Flow Graph representation.
+- [ ] **Lowering (Initial)**:
+    - [ ] Lower CST `forge` declarations to `MirBody`.
+    - [ ] Handle `LetStmt` and simple `i32` expressions in MIR.
 - [ ] **Verification**: 
     - [ ] Run `izelc hello.iz` and produce an executable.
 
@@ -82,9 +90,8 @@ This document provides a granular, step-by-step roadmap for building the Izel co
     - [ ] `bind` (closures) and `move` semantics.
 
 ### 1.2 `izel_resolve` (Name & Module Resolution)
-- [ ] **Scope Tree**:
-    - [ ] Implement lexical scoping and shadowing logic.
-    - [ ] Handle `self` and `super` keywords.
+- [x] **Scope Tree**:
+    - [x] Implement lexical scoping and basic symbol definition.
 - [ ] **Module Graph**:
     - [ ] Build dependency graph from `draw` requests.
     - [ ] Detect cyclic imports and report as errors.
