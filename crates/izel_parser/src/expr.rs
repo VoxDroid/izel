@@ -82,11 +82,30 @@ impl Parser {
                 }
                 SyntaxNode::new(NodeKind::ParenExpr, children)
             }
-            // Unary operators
             TokenKind::Minus | TokenKind::Not | TokenKind::Tilde | TokenKind::Star | TokenKind::Ampersand => {
                 children.push(SyntaxElement::Token(self.bump()));
                 children.push(SyntaxElement::Node(self.parse_expr(Precedence::Unary)));
                 SyntaxNode::new(NodeKind::UnaryExpr, children)
+            }
+            TokenKind::Given => {
+                children.push(SyntaxElement::Token(self.bump()));
+                self.parse_given_expr(children)
+            }
+            TokenKind::Branch => {
+                children.push(SyntaxElement::Token(self.bump()));
+                self.parse_branch_expr(children)
+            }
+            TokenKind::Loop => {
+                children.push(SyntaxElement::Token(self.bump()));
+                self.parse_loop_expr(children)
+            }
+            TokenKind::While => {
+                children.push(SyntaxElement::Token(self.bump()));
+                self.parse_while_expr(children)
+            }
+            TokenKind::Each => {
+                children.push(SyntaxElement::Token(self.bump()));
+                self.parse_each_expr(children)
             }
             _ => {
                 children.push(SyntaxElement::Token(self.bump()));

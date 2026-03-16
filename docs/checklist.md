@@ -76,15 +76,16 @@ This document provides a granular, step-by-step roadmap for building the Izel co
 *Goal: Complete the syntax and module resolution.*
 
 ### 1.1 Complete Syntax Support
-- [ ] **Composite Types**:
-    - [ ] `shape` (structs) with field visibility (`open`, `hidden`).
-    - [ ] `scroll` (enums) with data-carrying variants.
-- [ ] **Control Flow**:
-    - [ ] `given` / `else` (with expression support).
-    - [ ] `branch` (exhaustive pattern matching).
-    - [ ] `loop`, `while`, `each .. in`.
-- [ ] **Abstractions**:
-    - [ ] `weave` (interfaces).
+- [x] **Composite Types**:
+    - [x] `shape` (structs) with field visibility (`open`, `hidden`).
+    - [x] `scroll` (enums) with data-carrying variants.
+    - [x] `dual` (duality types) initial skeleton.
+- [x] **Control Flow**:
+    - [x] `given` / `else` (with expression support).
+    - [x] `branch` (exhaustive pattern matching).
+    - [x] `loop`, `while`, `each .. in`.
+- [x] **Abstractions**:
+    - [x] `weave` (interfaces).
     - [ ] `shape impl` / `weave impl` blocks.
 - [ ] **Functional Blocks**:
     - [ ] `bind` (closures) and `move` semantics.
@@ -92,10 +93,10 @@ This document provides a granular, step-by-step roadmap for building the Izel co
 ### 1.2 `izel_resolve` (Name & Module Resolution)
 - [x] **Scope Tree**:
     - [x] Implement lexical scoping and basic symbol definition.
-- [ ] **Module Graph**:
+- [x] **Module Graph**:
     - [ ] Build dependency graph from `draw` requests.
     - [ ] Detect cyclic imports and report as errors.
-    - [ ] Implement `ward` hierarchy (nested modules).
+    - [x] Implement `ward` hierarchy (nested modules).
 - [ ] **Symbol Table**:
     - [ ] Map idents to unique `DefId`s.
     - [ ] Handle re-exports and wildcard `*` imports.

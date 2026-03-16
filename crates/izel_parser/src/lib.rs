@@ -32,52 +32,253 @@ impl Parser {
 
     pub fn parse_decl(&mut self) -> SyntaxNode {
         let mut children = self.eat_trivia();
+        
+        // Handle modifiers (open/hidden/pure/sole/etc)
+        while matches!(self.current_kind(), TokenKind::Open | TokenKind::Hidden | TokenKind::Pure | TokenKind::Sole) {
+             children.push(SyntaxElement::Token(self.bump()));
+             children.extend(self.eat_trivia().into_iter());
+        }
+
         match self.current_kind() {
             TokenKind::Forge => {
                 children.push(SyntaxElement::Token(self.bump())); // forge
-                children.extend(self.eat_trivia().into_iter());
-                if self.current_kind() == TokenKind::Ident {
-                    children.push(SyntaxElement::Token(self.bump())); // name
-                }
-                
-                // Params
-                children.extend(self.eat_trivia().into_iter());
-                if self.current_kind() == TokenKind::OpenParen {
-                    children.push(SyntaxElement::Token(self.bump()));
-                    // Basic param parsing
-                    children.extend(self.eat_trivia().into_iter());
-                    while self.current_kind() != TokenKind::CloseParen && self.current_kind() != TokenKind::Eof {
-                         children.push(SyntaxElement::Token(self.bump()));
-                    }
-                    if self.current_kind() == TokenKind::CloseParen {
-                        children.push(SyntaxElement::Token(self.bump()));
-                    }
-                }
-
-                // Return type
-                children.extend(self.eat_trivia().into_iter());
-                if self.current_kind() == TokenKind::Arrow {
-                    children.push(SyntaxElement::Token(self.bump()));
-                    children.extend(self.eat_trivia().into_iter());
-                    while self.current_kind() != TokenKind::OpenBrace && self.current_kind() != TokenKind::Eof {
-                         children.push(SyntaxElement::Token(self.bump()));
-                    }
-                }
-
-                // Block
-                children.extend(self.eat_trivia().into_iter());
-                if self.current_kind() == TokenKind::OpenBrace {
-                    children.push(SyntaxElement::Node(self.parse_block()));
-                }
-
-                SyntaxNode::new(NodeKind::ForgeDecl, children)
+                self.parse_forge_after_keyword(children)
             }
-            _ => self.parse_stmt(),
+            TokenKind::Shape => {
+                children.push(SyntaxElement::Token(self.bump())); // shape
+                self.parse_shape_after_keyword(children)
+            }
+            TokenKind::Scroll => {
+                children.push(SyntaxElement::Token(self.bump())); // scroll
+                self.parse_scroll_after_keyword(children)
+            }
+            TokenKind::Ward => {
+                children.push(SyntaxElement::Token(self.bump())); // ward
+                self.parse_ward_after_keyword(children)
+            }
+            TokenKind::Dual => {
+                children.push(SyntaxElement::Token(self.bump())); // dual
+                self.parse_dual_after_keyword(children)
+            }
+            TokenKind::Weave => {
+                children.push(SyntaxElement::Token(self.bump())); // weave
+                self.parse_weave_after_keyword(children)
+            }
+            _ => self.parse_stmt_after_trivia(children),
         }
     }
 
-    pub fn parse_stmt(&mut self) -> SyntaxNode {
+    fn parse_forge_after_keyword(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::Ident {
+            children.push(SyntaxElement::Token(self.bump())); // name
+        }
+        
+        // Params
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::OpenParen {
+            children.push(SyntaxElement::Token(self.bump()));
+            // Basic param parsing
+            children.extend(self.eat_trivia().into_iter());
+            while self.current_kind() != TokenKind::CloseParen && self.current_kind() != TokenKind::Eof {
+                 children.push(SyntaxElement::Token(self.bump()));
+            }
+            if self.current_kind() == TokenKind::CloseParen {
+                children.push(SyntaxElement::Token(self.bump()));
+            }
+        }
+
+        // Return type
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::Arrow {
+            children.push(SyntaxElement::Token(self.bump()));
+            children.extend(self.eat_trivia().into_iter());
+            while self.current_kind() != TokenKind::OpenBrace && self.current_kind() != TokenKind::Eof {
+                 children.push(SyntaxElement::Token(self.bump()));
+            }
+        }
+
+        // Block
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::OpenBrace {
+            children.push(SyntaxElement::Node(self.parse_block()));
+        }
+
+        SyntaxNode::new(NodeKind::ForgeDecl, children)
+    }
+
+    fn parse_shape_after_keyword(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::Ident {
+            children.push(SyntaxElement::Token(self.bump())); // name
+        }
+        
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::OpenBrace {
+            children.push(SyntaxElement::Token(self.bump()));
+            while self.current_kind() != TokenKind::CloseBrace && self.current_kind() != TokenKind::Eof {
+                children.push(SyntaxElement::Node(self.parse_field()));
+                children.extend(self.eat_trivia().into_iter());
+            }
+            if self.current_kind() == TokenKind::CloseBrace {
+                children.push(SyntaxElement::Token(self.bump()));
+            }
+        }
+
+        SyntaxNode::new(NodeKind::ShapeDecl, children)
+    }
+
+    fn parse_scroll_after_keyword(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::Ident {
+            children.push(SyntaxElement::Token(self.bump())); // name
+        }
+        
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::OpenBrace {
+            children.push(SyntaxElement::Token(self.bump()));
+            while self.current_kind() != TokenKind::CloseBrace && self.current_kind() != TokenKind::Eof {
+                children.push(SyntaxElement::Node(self.parse_variant()));
+                children.extend(self.eat_trivia().into_iter());
+            }
+            if self.current_kind() == TokenKind::CloseBrace {
+                children.push(SyntaxElement::Token(self.bump()));
+            }
+        }
+
+        SyntaxNode::new(NodeKind::ScrollDecl, children)
+    }
+
+    fn parse_variant(&mut self) -> SyntaxNode {
         let mut children = self.eat_trivia();
+        if self.current_kind() == TokenKind::Ident {
+            children.push(SyntaxElement::Token(self.bump()));
+            
+            children.extend(self.eat_trivia().into_iter());
+            // Optional data Circle { radius: f64 } or Point(f64, f64)
+            if self.current_kind() == TokenKind::OpenBrace {
+                 // Reuse field parsing or block? Let's just consume for now
+                 children.push(SyntaxElement::Token(self.bump()));
+                 while self.current_kind() != TokenKind::CloseBrace && self.current_kind() != TokenKind::Eof {
+                      children.push(SyntaxElement::Token(self.bump()));
+                 }
+                 if self.current_kind() == TokenKind::CloseBrace {
+                      children.push(SyntaxElement::Token(self.bump()));
+                 }
+            } else if self.current_kind() == TokenKind::OpenParen {
+                 children.push(SyntaxElement::Token(self.bump()));
+                 while self.current_kind() != TokenKind::CloseParen && self.current_kind() != TokenKind::Eof {
+                      children.push(SyntaxElement::Token(self.bump()));
+                 }
+                 if self.current_kind() == TokenKind::CloseParen {
+                      children.push(SyntaxElement::Token(self.bump()));
+                 }
+            }
+        }
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::Comma {
+             children.push(SyntaxElement::Token(self.bump()));
+        }
+        SyntaxNode::new(NodeKind::Variant, children)
+    }
+
+    fn parse_ward_after_keyword(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::Ident {
+            children.push(SyntaxElement::Token(self.bump())); // name
+        }
+        
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::OpenBrace {
+            children.push(SyntaxElement::Token(self.bump()));
+            while self.current_kind() != TokenKind::CloseBrace && self.current_kind() != TokenKind::Eof {
+                children.push(SyntaxElement::Node(self.parse_decl()));
+                children.extend(self.eat_trivia().into_iter());
+            }
+            if self.current_kind() == TokenKind::CloseBrace {
+                children.push(SyntaxElement::Token(self.bump()));
+            }
+        }
+
+        SyntaxNode::new(NodeKind::WardDecl, children)
+    }
+
+    fn parse_dual_after_keyword(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::Ident {
+            children.push(SyntaxElement::Token(self.bump())); // name
+        }
+        
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::OpenBrace {
+            children.push(SyntaxElement::Token(self.bump()));
+            while self.current_kind() != TokenKind::CloseBrace && self.current_kind() != TokenKind::Eof {
+                children.push(SyntaxElement::Node(self.parse_decl()));
+                children.extend(self.eat_trivia().into_iter());
+            }
+            if self.current_kind() == TokenKind::CloseBrace {
+                children.push(SyntaxElement::Token(self.bump()));
+            }
+        }
+
+        SyntaxNode::new(NodeKind::DualDecl, children)
+    }
+
+    fn parse_weave_after_keyword(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::Ident {
+            children.push(SyntaxElement::Token(self.bump())); // name
+        }
+        
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::OpenBrace {
+            children.push(SyntaxElement::Token(self.bump()));
+            while self.current_kind() != TokenKind::CloseBrace && self.current_kind() != TokenKind::Eof {
+                children.push(SyntaxElement::Node(self.parse_decl()));
+                children.extend(self.eat_trivia().into_iter());
+            }
+            if self.current_kind() == TokenKind::CloseBrace {
+                children.push(SyntaxElement::Token(self.bump()));
+            }
+        }
+
+        SyntaxNode::new(NodeKind::WeaveDecl, children)
+    }
+
+    fn parse_field(&mut self) -> SyntaxNode {
+        let mut children = self.eat_trivia();
+        // visibility
+        if matches!(self.current_kind(), TokenKind::Open | TokenKind::Hidden) {
+            children.push(SyntaxElement::Token(self.bump()));
+            children.extend(self.eat_trivia().into_iter());
+        }
+        // Name
+        if self.current_kind() == TokenKind::Ident {
+            children.push(SyntaxElement::Token(self.bump()));
+            children.extend(self.eat_trivia().into_iter());
+        }
+        // Colon
+        if self.current_kind() == TokenKind::Colon {
+            children.push(SyntaxElement::Token(self.bump()));
+            children.extend(self.eat_trivia().into_iter());
+        }
+        // Type
+        if self.current_kind() == TokenKind::Ident {
+             children.push(SyntaxElement::Token(self.bump()));
+             children.extend(self.eat_trivia().into_iter());
+        }
+        if self.current_kind() == TokenKind::Comma {
+             children.push(SyntaxElement::Token(self.bump()));
+        }
+        SyntaxNode::new(NodeKind::Field, children)
+    }
+
+    pub fn parse_stmt(&mut self) -> SyntaxNode {
+        let children = self.eat_trivia();
+        self.parse_stmt_after_trivia(children)
+    }
+
+    fn parse_stmt_after_trivia(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
         match self.current_kind() {
             TokenKind::Let | TokenKind::Tilde => {
                 children.push(SyntaxElement::Token(self.bump())); // let or ~
@@ -121,6 +322,88 @@ impl Parser {
             }
         }
         SyntaxNode::new(NodeKind::Block, children)
+    }
+
+    pub fn parse_given_expr(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
+        children.extend(self.eat_trivia().into_iter());
+        children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::OpenBrace {
+            children.push(SyntaxElement::Node(self.parse_block()));
+        }
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::Else {
+            children.push(SyntaxElement::Token(self.bump()));
+            children.extend(self.eat_trivia().into_iter());
+            if self.current_kind() == TokenKind::Given {
+                 let next_given_children = vec![SyntaxElement::Token(self.bump())];
+                 children.push(SyntaxElement::Node(self.parse_given_expr(next_given_children)));
+            } else if self.current_kind() == TokenKind::OpenBrace {
+                 children.push(SyntaxElement::Node(self.parse_block()));
+            }
+        }
+        SyntaxNode::new(NodeKind::GivenExpr, children)
+    }
+
+    pub fn parse_branch_expr(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
+        children.extend(self.eat_trivia().into_iter());
+        children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::OpenBrace {
+            children.push(SyntaxElement::Token(self.bump()));
+            while self.current_kind() != TokenKind::CloseBrace && self.current_kind() != TokenKind::Eof {
+                children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+                children.extend(self.eat_trivia().into_iter());
+                if self.current_kind() == TokenKind::FatArrow {
+                    children.push(SyntaxElement::Token(self.bump()));
+                    children.extend(self.eat_trivia().into_iter());
+                    children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+                }
+                children.extend(self.eat_trivia().into_iter());
+                if self.current_kind() == TokenKind::Comma {
+                     children.push(SyntaxElement::Token(self.bump()));
+                }
+                children.extend(self.eat_trivia().into_iter());
+            }
+            if self.current_kind() == TokenKind::CloseBrace {
+                children.push(SyntaxElement::Token(self.bump()));
+            }
+        }
+        SyntaxNode::new(NodeKind::BranchExpr, children)
+    }
+
+    pub fn parse_loop_expr(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::OpenBrace {
+            children.push(SyntaxElement::Node(self.parse_block()));
+        }
+        SyntaxNode::new(NodeKind::LoopExpr, children)
+    }
+
+    pub fn parse_while_expr(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
+        children.extend(self.eat_trivia().into_iter());
+        children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::OpenBrace {
+            children.push(SyntaxElement::Node(self.parse_block()));
+        }
+        SyntaxNode::new(NodeKind::WhileExpr, children)
+    }
+
+    pub fn parse_each_expr(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
+        children.extend(self.eat_trivia().into_iter());
+        children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::In {
+             children.push(SyntaxElement::Token(self.bump()));
+             children.extend(self.eat_trivia().into_iter());
+             children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+        }
+        children.extend(self.eat_trivia().into_iter());
+        if self.current_kind() == TokenKind::OpenBrace {
+            children.push(SyntaxElement::Node(self.parse_block()));
+        }
+        SyntaxNode::new(NodeKind::EachExpr, children)
     }
 
     fn eat_trivia(&mut self) -> Vec<SyntaxElement> {

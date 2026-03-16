@@ -6,6 +6,13 @@ pub enum NodeKind {
     
     // Declarations
     ForgeDecl,
+    ShapeDecl,
+    ScrollDecl,
+    WardDecl,
+    DualDecl,
+    WeaveDecl,
+    Field,
+    Variant,
     ParamPart,
     Param,
     ReturnPart,
@@ -22,6 +29,11 @@ pub enum NodeKind {
     UnaryExpr,
     CallExpr,
     ParenExpr,
+    GivenExpr,
+    BranchExpr,
+    LoopExpr,
+    WhileExpr,
+    EachExpr,
     
     // Trivia & Tokens in CST
     Token(TokenKind),

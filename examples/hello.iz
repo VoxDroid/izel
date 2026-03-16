@@ -1,1 +1,7 @@
-forge main() { let x = 42; println("Hello Izel"); }
+ward math {
+    forge square(x: i32) -> i32 { x * x }
+}
+
+forge main() -> i32 {
+    0
+}

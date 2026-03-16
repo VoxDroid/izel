@@ -35,7 +35,7 @@ fn main() -> Result<()> {
     println!("Resolving symbols...");
     let mut resolver = izel_resolve::Resolver::new();
     resolver.resolve_source_file(&cst, &source);
-    for (name, symbol) in &resolver.root_scope.symbols {
+    for (name, symbol) in &*resolver.root_scope.symbols.borrow() {
         println!("Resolved symbol: {} at {:?}", name, symbol.span);
     }
 
