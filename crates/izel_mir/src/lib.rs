@@ -9,6 +9,12 @@ pub mod lower;
 pub struct MirBody {
     pub blocks: DiGraph<BasicBlock, ControlFlow>,
     pub entry: BlockId,
+    pub locals: Vec<LocalData>,
+}
+
+pub struct LocalData {
+    pub name: String,
+    // Add type information later
 }
 
 pub struct BasicBlock {
@@ -87,6 +93,6 @@ impl MirBody {
             instructions: Vec::new(),
             terminator: None,
         });
-        Self { blocks, entry }
+        Self { blocks, entry, locals: Vec::new() }
     }
 }

@@ -8,21 +8,22 @@ This document provides a granular, step-by-step roadmap for building the Izel co
 *Goal: Establish the workspace and the "Hello World" path.*
 
 ### 0.1 Workspace Setup
-- [ ] **Root Initialization**:
-    - [ ] Create `Cargo.toml` with `[workspace]` and initial members.
-    - [ ] Add `rust-toolchain.toml` (targeting stable/nightly Rust).
-    - [ ] Configure `.gitignore` (ignore `target/`, `Izel.lock`, `.izel/`).
-- [ ] **Core Utility Crates**:
-    - [ ] `izel_span`: 
-        - [ ] Define `BytePos`, `SourceId`, and `Span` structs.
-        - [ ] Implement `SourceMap` to manage file buffers.
-    - [ ] `izel_diagnostics`:
-        - [ ] Integrate `codespan-reporting`.
-        - [ ] Define `Diagnostic` and `Label` wrappers.
-        - [ ] Implement `emit` for rich terminal output.
-    - [ ] `izel_session`:
-        - [ ] Define `Session` global state.
-        - [ ] Implement `ParseOptions` and `Config` (via `clap`).
+- [x] **Root Initialization**:
+    - [x] Create `Cargo.toml` with `[workspace]` and initial members.
+    - [x] Add `rust-toolchain.toml` (targeting stable/nightly Rust).
+    - [x] Configure `.gitignore` (ignore `target/`, `Izel.lock`, `.izel/`).
+- [x] **Core Utility Crates**:
+    - [x] `izel_span`: 
+        - [x] Define `BytePos`, `SourceId`, and `Span` structs.
+        - [x] Implement `SourceMap` to manage file buffers.
+    - [x] `izel_diagnostics`:
+        - [x] Integrate `codespan-reporting`.
+        - [x] Define `Diagnostic` and `Label` wrappers.
+        - [x] Implement `emit` for rich terminal output.
+    - [x] `izel_session`:
+        - [x] Define `Session` global state.
+        - [x] Implement `ParseOptions` and `Config` (via `clap`).
+
 
 ### 0.2 `izel_lexer` (DFA Tokenizer)
 - [x] **Token Definitions**:
@@ -31,11 +32,12 @@ This document provides a granular, step-by-step roadmap for building the Izel co
 - [x] **Scanner Logic**:
     - [x] Implement `Cursor` for UTF-8 character streaming.
     - [x] Handle comments: `//` (single) and `/~ ... ~/` (nested/multi).
-    - [ ] Implement `StringReader`: esc codes, Unicode escapes `\u{...}`.
+    - [x] Implement `StringReader`: esc codes, Unicode escapes `\u{...}`.
     - [x] Implement `NumberReader`: Support `_` separators, hex/oct/bin prefixes.
 - [x] **Verification**:
     - [x] Implement `izelc --emit tokens` for debugging.
-    - [ ] Set up `cargo-fuzz` target for the lexer.
+    - [x] Set up `cargo-fuzz` target for the lexer.
+
 
 ### 0.3 `izel_parser` (CST & AST)
 - [x] **CST Infrastructure**:
@@ -64,11 +66,11 @@ This document provides a granular, step-by-step roadmap for building the Izel co
 - [x] **MIR Infrastructure**:
     - [x] Define `MirBody`, `BasicBlock`, `Instruction`, `Terminator`.
     - [x] Use `petgraph` for Control Flow Graph representation.
-- [ ] **Lowering (Initial)**:
-    - [ ] Lower CST `forge` declarations to `MirBody`.
-    - [ ] Handle `LetStmt` and simple `i32` expressions in MIR.
-- [ ] **Verification**: 
-    - [ ] Run `izelc hello.iz` and produce an executable.
+- [x] **Lowering (Initial)**:
+    - [x] Lower CST `forge` declarations to `MirBody`.
+    - [x] Handle `LetStmt` and simple `i32` expressions in MIR.
+- [x] **Verification**: 
+    - [x] Run `izelc hello.iz` and produce an executable.
 
 ---
 

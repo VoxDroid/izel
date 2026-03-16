@@ -142,5 +142,42 @@ impl Token {
 
 pub mod cursor;
 pub mod lexer;
+pub mod string_reader;
 
 pub use lexer::Lexer;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use izel_span::SourceId;
+
+    fn lex(source: &str) -> Vec<TokenKind> {
+        let mut lexer = Lexer::new(source, SourceId(0));
+        let mut tokens = Vec::new();
+        loop {
+            let token = lexer.next_token();
+            if token.kind == TokenKind::Eof {
+                break;
+            }
+            if token.kind != TokenKind::Whitespace {
+                tokens.push(token.kind);
+            }
+        }
+        tokens
+    }
+
+    #[test]
+    fn test_strings() {
+        assert_eq!(lex("\"hello\""), vec![TokenKind::Str { terminated: true }]);
+        assert_eq!(lex("\"hello\\nworld\""), vec![TokenKind::Str { terminated: true }]);
+        assert_eq!(lex("\"\\u{1F600}\""), vec![TokenKind::Str { terminated: true }]);
+        assert_eq!(lex("\"unterminated"), vec![TokenKind::Str { terminated: false }]);
+    }
+
+    #[test]
+    fn test_chars() {
+        assert_eq!(lex("'a'"), vec![TokenKind::Char { terminated: true }]);
+        assert_eq!(lex("'\\n'"), vec![TokenKind::Char { terminated: true }]);
+        assert_eq!(lex("'\\u{1F600}'"), vec![TokenKind::Char { terminated: true }]);
+    }
+}

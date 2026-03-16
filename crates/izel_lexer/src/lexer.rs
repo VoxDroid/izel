@@ -272,7 +272,7 @@ impl<'a> Lexer<'a> {
                 break;
             }
             if c == '\\' {
-                self.cursor.bump(); // Skip any char for now, simple escape handler
+                crate::string_reader::eat_escape(&mut self.cursor);
             }
         }
         TokenKind::Str { terminated }
@@ -285,7 +285,7 @@ impl<'a> Lexer<'a> {
                 break;
             }
             if c == '\\' {
-                self.cursor.bump();
+                crate::string_reader::eat_escape(&mut self.cursor);
             }
         }
         TokenKind::InterpolatedStr { terminated }
@@ -299,7 +299,7 @@ impl<'a> Lexer<'a> {
                 break;
             }
             if c == '\\' {
-                self.cursor.bump();
+                crate::string_reader::eat_escape(&mut self.cursor);
             }
         }
         TokenKind::ByteStr { terminated }
@@ -309,7 +309,7 @@ impl<'a> Lexer<'a> {
         let mut terminated = false;
         if let Some(c) = self.cursor.bump() {
             if c == '\\' {
-                self.cursor.bump();
+                crate::string_reader::eat_escape(&mut self.cursor);
             }
             if self.cursor.first() == '\'' {
                 self.cursor.bump();
@@ -323,7 +323,7 @@ impl<'a> Lexer<'a> {
         let mut terminated = false;
         if let Some(c) = self.cursor.bump() {
             if c == '\\' {
-                self.cursor.bump();
+                crate::string_reader::eat_escape(&mut self.cursor);
             }
             if self.cursor.first() == '\'' {
                 self.cursor.bump();

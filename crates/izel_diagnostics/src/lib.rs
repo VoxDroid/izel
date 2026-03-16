@@ -22,3 +22,13 @@ pub fn primary_label(span: Span, msg: impl Into<String>) -> Label {
 pub fn secondary_label(span: Span, msg: impl Into<String>) -> Label {
     Label::secondary(span.source_id, span.lo.0 as usize..span.hi.0 as usize).with_message(msg)
 }
+
+pub fn emit(source_map: &izel_span::SourceMap, diagnostic: &Diagnostic) {
+    use codespan_reporting::term;
+    use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+
+    let writer = StandardStream::stderr(ColorChoice::Auto);
+    let config = term::Config::default();
+
+    term::emit(&mut writer.lock(), &config, source_map, diagnostic).expect("failed to emit diagnostic");
+}

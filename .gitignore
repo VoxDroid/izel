@@ -1,6 +1,12 @@
-/target
+target/
+Izel.lock
+.izel/
+*.ll
+.vscode/
+.idea/
+*.swp
+*~
 /dist
-/.izel
 /Izel.lock
 **/*.rs.bk
 .DS_Store
