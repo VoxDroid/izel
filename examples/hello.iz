@@ -1,7 +1,9 @@
-ward math {
-    forge square(x: i32) -> i32 { x * x }
+shape Person {
+    name: str,
+    age: ?i32,
 }
 
 forge main() -> i32 {
+    let p = Person { name: "Alice", age: nil };
     0
 }

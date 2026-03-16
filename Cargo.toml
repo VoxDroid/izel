@@ -10,6 +10,7 @@ members = [
     "crates/izel_mir",
     "crates/izel_resolve",
     "crates/izel_typeck",
+    "crates/izel_ast_lower",
     "crates/izel_driver",
 ]
 

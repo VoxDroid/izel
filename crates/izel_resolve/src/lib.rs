@@ -81,7 +81,9 @@ impl Resolver {
                     NodeKind::ScrollDecl => self.resolve_named_decl(child_node, TokenKind::Scroll, source),
                     NodeKind::WardDecl => self.resolve_ward_decl(child_node, source),
                     NodeKind::DualDecl => self.resolve_named_decl(child_node, TokenKind::Dual, source),
+                    NodeKind::ImplBlock => self.resolve_children(child_node, source),
                     NodeKind::WeaveDecl => self.resolve_named_decl(child_node, TokenKind::Weave, source),
+                    NodeKind::DrawDecl => self.resolve_draw_decl(child_node, source),
                     _ => {}
                 }
             }
@@ -137,5 +139,9 @@ impl Resolver {
             let parent = self.current_scope.parent.clone().expect("Ward scope must have parent");
             self.current_scope = parent;
         }
+    }
+
+    fn resolve_draw_decl(&mut self, _node: &SyntaxNode, _source: &str) {
+        // TODO: Implement dependency graph building
     }
 }

@@ -70,7 +70,7 @@ impl<'a> Lexer<'a> {
                     self.cursor.bump();
                     TokenKind::Pipe
                 } else {
-                    TokenKind::Unknown
+                    TokenKind::Bar
                 }
             }
             ':' => {
@@ -229,6 +229,8 @@ impl<'a> Lexer<'a> {
             "type"     => TokenKind::Type,
             "alias"    => TokenKind::Alias,
             "impl"     => TokenKind::Impl,
+            "for"      => TokenKind::For,
+            "bind"     => TokenKind::Bind,
             _          => TokenKind::Ident,
         }
     }

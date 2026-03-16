@@ -54,6 +54,8 @@ pub enum TokenKind {
     Type,
     Alias,
     Impl,
+    For,
+    Bind,
 
     // Identifiers
     Ident,
@@ -71,6 +73,7 @@ pub enum TokenKind {
     Bang,           // !
     At,             // @
     Pipe,           // |>
+    Bar,            // |
     DoubleColon,    // ::
     Arrow,          // ->
     FatArrow,       // =>

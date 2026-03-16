@@ -86,15 +86,15 @@ This document provides a granular, step-by-step roadmap for building the Izel co
     - [x] `loop`, `while`, `each .. in`.
 - [x] **Abstractions**:
     - [x] `weave` (interfaces).
-    - [ ] `shape impl` / `weave impl` blocks.
-- [ ] **Functional Blocks**:
-    - [ ] `bind` (closures) and `move` semantics.
+    - [x] `shape impl` / `weave impl` blocks.
+- [x] **Functional Blocks**:
+    - [x] `bind` (closures) and `move` semantics.
 
 ### 1.2 `izel_resolve` (Name & Module Resolution)
 - [x] **Scope Tree**:
     - [x] Implement lexical scoping and basic symbol definition.
 - [x] **Module Graph**:
-    - [ ] Build dependency graph from `draw` requests.
+    - [x] Build dependency graph from `draw` requests.
     - [ ] Detect cyclic imports and report as errors.
     - [x] Implement `ward` hierarchy (nested modules).
 - [ ] **Symbol Table**:
@@ -102,7 +102,7 @@ This document provides a granular, step-by-step roadmap for building the Izel co
     - [ ] Handle re-exports and wildcard `*` imports.
 
 ### 1.3 `izel_ast_lower` (Desugaring)
-- [ ] **Sugar Expansion**:
+- [x] **Sugar Expansion**:
     - [ ] Expand `` `...` `` interpolated strings to `std::fmt` calls.
     - [ ] Expand `x!` (cascade propagation) to match-based return.
     - [ ] Expand `?T` to `Option<T>`.
