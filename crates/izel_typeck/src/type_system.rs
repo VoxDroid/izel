@@ -15,7 +15,7 @@ pub enum Type {
     Cascade(Box<Type>),
     
     /// Pointer types (*T or *~T)
-    Pointer(Box<Type>, bool), // bool is mut
+    Pointer(Box<Type>, bool, Lifetime), // bool is mut
     
     /// Functions
     Function {
@@ -38,6 +38,16 @@ pub enum Type {
     
     /// Error sentinel
     Error,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Lifetime {
+    /// Static lifetime ('static)
+    Static,
+    /// Named lifetime parameter ('a)
+    Param(String),
+    /// Anonymous/elided lifetime
+    Anonymous(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

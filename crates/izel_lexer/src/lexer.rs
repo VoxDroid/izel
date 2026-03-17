@@ -113,7 +113,14 @@ impl<'a> Lexer<'a> {
                     TokenKind::Dot
                 }
             }
-            '?' => TokenKind::Question,
+            '?' => {
+                if self.cursor.first() == '?' {
+                    self.cursor.bump();
+                    TokenKind::QuestionQuestion
+                } else {
+                    TokenKind::Question
+                }
+            }
             '#' => TokenKind::Pound,
             '+' => TokenKind::Plus,
             '*' => TokenKind::Star,

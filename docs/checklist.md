@@ -116,16 +116,16 @@ This document provides a granular, step-by-step roadmap for building the Izel co
 *Goal: Implement the type system and borrow checker.*
 
 ### 2.1 `izel_typeck` (Type Inference)
-- [ ] **Inference Engine**:
+- [x] **Inference Engine**:
     - [x] Define comprehensive `Type` enum and `TypeChecker` structure.
     - [x] Implement basic unification (Algorithm W style).
     - [x] Implement Hindley-Milner with constraint gathering.
     - [x] Implement Row-based unification for effects.
-- [ ] **Traits & Poly**:
-    - [ ] Resolve `weave` bounds on generics.
-    - [ ] Handle associated types (`type Item`).
-    - [ ] Implement orphan rule check (coherence).
-- [ ] **Effect System**:
+- [x] **Traits & Poly**:
+    - [x] Resolve `weave` bounds on generics.
+    - [x] Handle associated types (`type Item`).
+    - [x] Implement orphan rule check (coherence).
+- [x] **Effect System**:
     - [x] Transitive effect discovery (e.g., `f` calls `g !io` -> `f` is `!io`).
     - [x] Check `forge f() !effect` annotations at call sites.
 

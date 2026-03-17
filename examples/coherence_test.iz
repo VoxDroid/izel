@@ -1,0 +1,29 @@
+// Test coherence and null-coalescing
+
+weave Drawable {
+    forge draw(self)
+}
+
+shape Point { x: i32, y: i32 }
+
+weave Drawable for Point {
+    forge draw(self) {
+        // Draw logic
+    }
+}
+
+// ERROR: Duplicate implementation
+weave Drawable for Point {
+    forge draw(self) {}
+}
+
+// ERROR: Orphan Rule (Foreign weave, Foreign type)
+weave Foreign for i32 {} 
+
+forge main() {
+    let x: ?i32 = nil
+    let y = x ?? 42
+    
+    let s: ?str = "hello"
+    let t = s ?? "default"
+}

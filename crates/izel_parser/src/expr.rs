@@ -6,6 +6,7 @@ use izel_lexer::TokenKind;
 pub enum Precedence {
     None,
     Pipeline,   // |>
+    Coalesce,   // ??
     LogicalOr,  // or
     LogicalAnd, // and
     Equality,   // == != is
@@ -26,6 +27,7 @@ impl Precedence {
     pub fn from_kind(kind: TokenKind) -> Self {
         match kind {
             TokenKind::Pipe => Precedence::Pipeline,
+            TokenKind::QuestionQuestion => Precedence::Coalesce,
             TokenKind::Or => Precedence::LogicalOr,
             TokenKind::And => Precedence::LogicalAnd,
             TokenKind::EqEq | TokenKind::NotEq | TokenKind::Is => Precedence::Equality,

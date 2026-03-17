@@ -1,0 +1,12 @@
+[package]
+name = "izel_borrow"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+izel_mir = { path = "../izel_mir" }
+izel_span = { path = "../izel_span" }
+izel_typeck = { path = "../izel_typeck" }
+izel_resolve = { path = "../izel_resolve" }
+petgraph = "0.6"
+rustc-hash = "1.1"

@@ -212,6 +212,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "izel_borrow"
+version = "0.1.0"
+dependencies = [
+ "izel_mir",
+ "izel_resolve",
+ "izel_span",
+ "izel_typeck",
+ "petgraph",
+ "rustc-hash",
+]
+
+[[package]]
 name = "izel_codegen"
 version = "0.1.0"
 dependencies = [
@@ -270,6 +282,7 @@ dependencies = [
  "izel_lexer",
  "izel_parser",
  "izel_span",
+ "izel_typeck",
  "petgraph",
 ]
 

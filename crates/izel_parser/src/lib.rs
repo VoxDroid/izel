@@ -79,7 +79,7 @@ impl Parser {
 
     fn parse_type_after_keyword(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
         children.extend(self.eat_trivia().into_iter());
-        if matches!(self.current_kind(), TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | TokenKind::Hidden) {
+        if self.is_naming_ident() {
             children.push(SyntaxElement::Token(self.bump())); // name
         }
         children.extend(self.eat_trivia().into_iter());
@@ -116,7 +116,7 @@ impl Parser {
 
     fn parse_forge_after_keyword(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
         children.extend(self.eat_trivia().into_iter());
-        if matches!(self.current_kind(), TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | TokenKind::Hidden) {
+        if self.is_naming_ident() {
             children.push(SyntaxElement::Token(self.bump())); // name
         }
         
@@ -171,7 +171,7 @@ impl Parser {
             return self.parse_impl_after_keywords(children);
         }
 
-        if matches!(self.current_kind(), TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | TokenKind::Hidden) {
+        if self.is_naming_ident() {
             children.push(SyntaxElement::Token(self.bump())); // name
         }
         
@@ -197,7 +197,7 @@ impl Parser {
 
     fn parse_impl_after_keywords(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
         children.extend(self.eat_trivia().into_iter());
-        if matches!(self.current_kind(), TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | TokenKind::Hidden) {
+        if self.is_naming_ident() {
             children.push(SyntaxElement::Token(self.bump())); // Target type
         }
         
@@ -218,7 +218,7 @@ impl Parser {
 
     fn parse_scroll_after_keyword(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
         children.extend(self.eat_trivia().into_iter());
-        if matches!(self.current_kind(), TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | TokenKind::Hidden) {
+        if self.is_naming_ident() {
             children.push(SyntaxElement::Token(self.bump())); // name
         }
         
@@ -239,7 +239,7 @@ impl Parser {
 
     fn parse_variant(&mut self) -> SyntaxNode {
         let mut children = self.eat_trivia();
-        if matches!(self.current_kind(), TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | TokenKind::Hidden) {
+        if self.is_naming_ident() {
             children.push(SyntaxElement::Token(self.bump()));
             
             children.extend(self.eat_trivia().into_iter());
@@ -299,7 +299,7 @@ impl Parser {
 
     fn parse_ward_after_keyword(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
         children.extend(self.eat_trivia().into_iter());
-        if matches!(self.current_kind(), TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | TokenKind::Hidden) {
+        if self.is_naming_ident() {
             children.push(SyntaxElement::Token(self.bump())); // name
         }
         
@@ -320,7 +320,7 @@ impl Parser {
 
     fn parse_dual_after_keyword(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
         children.extend(self.eat_trivia().into_iter());
-        if matches!(self.current_kind(), TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | TokenKind::Hidden) {
+        if self.is_naming_ident() {
             children.push(SyntaxElement::Token(self.bump())); // name
         }
         
@@ -341,7 +341,7 @@ impl Parser {
 
     fn parse_weave_after_keyword(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
         children.extend(self.eat_trivia().into_iter());
-        if matches!(self.current_kind(), TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | TokenKind::Hidden) {
+        if self.is_naming_ident() {
             children.push(SyntaxElement::Token(self.bump())); // weave name
         }
         
@@ -369,7 +369,7 @@ impl Parser {
         children.extend(self.eat_trivia().into_iter());
         // Simple path parsing: ident (:: ident)* (:: *)?
         loop {
-            if matches!(self.current_kind(), TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | TokenKind::Hidden) || self.current_kind() == TokenKind::Star {
+            if self.is_naming_ident() || self.current_kind() == TokenKind::Star {
                 children.push(SyntaxElement::Token(self.bump()));
             } else {
                 break;
@@ -394,13 +394,13 @@ impl Parser {
             children.push(SyntaxElement::Token(self.bump()));
             while self.current_kind() != TokenKind::Gt && self.current_kind() != TokenKind::Eof {
                 let mut param_children = self.eat_trivia();
-                if matches!(self.current_kind(), TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | TokenKind::Hidden) {
+                if self.is_naming_ident() {
                     param_children.push(SyntaxElement::Token(self.bump()));
                     param_children.extend(self.eat_trivia().into_iter());
                     if self.current_kind() == TokenKind::Colon {
                         param_children.push(SyntaxElement::Token(self.bump()));
                         param_children.extend(self.eat_trivia().into_iter());
-                        if matches!(self.current_kind(), TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | TokenKind::Hidden) {
+                        if self.is_naming_ident() {
                             param_children.push(SyntaxElement::Token(self.bump()));
                         }
                     }
@@ -447,7 +447,7 @@ impl Parser {
             children.extend(self.eat_trivia().into_iter());
         }
         // Name
-        if matches!(self.current_kind(), TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | TokenKind::Hidden) {
+        if self.is_naming_ident() {
             children.push(SyntaxElement::Token(self.bump()));
             children.extend(self.eat_trivia().into_iter());
         }
@@ -476,7 +476,7 @@ impl Parser {
             children.extend(self.eat_trivia().into_iter());
         }
 
-        if matches!(self.current_kind(), TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | TokenKind::Hidden) || self.current_kind() == TokenKind::SelfKw {
+        if self.is_naming_ident() || self.current_kind() == TokenKind::SelfKw {
             children.push(SyntaxElement::Token(self.bump())); // name or self
             children.extend(self.eat_trivia().into_iter());
             if self.current_kind() == TokenKind::Colon {
@@ -503,7 +503,7 @@ impl Parser {
             TokenKind::Let | TokenKind::Tilde => {
                 children.push(SyntaxElement::Token(self.bump())); // let or ~
                 children.extend(self.eat_trivia().into_iter());
-                if matches!(self.current_kind(), TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | TokenKind::Hidden) {
+                if self.is_naming_ident() {
                     children.push(SyntaxElement::Token(self.bump())); // name
                 }
                 children.extend(self.eat_trivia().into_iter());
@@ -665,11 +665,25 @@ impl Parser {
         token
     }
 
+    fn is_naming_ident(&self) -> bool {
+        match self.current_kind() {
+            TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | 
+            TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | 
+            TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | 
+            TokenKind::Hidden | TokenKind::Draw | TokenKind::Seek | TokenKind::Catch |
+            TokenKind::Flow | TokenKind::Tide | TokenKind::Zone | TokenKind::Bridge |
+            TokenKind::Raw | TokenKind::Echo | TokenKind::Ward | TokenKind::Scroll |
+            TokenKind::Dual | TokenKind::Alias | TokenKind::Pkg | TokenKind::Comptime |
+            TokenKind::Static | TokenKind::Extern | TokenKind::Bind => true,
+            _ => false,
+        }
+    }
+
     fn parse_effects(&mut self) -> Vec<SyntaxElement> {
         let mut results = vec![];
         while self.current_kind() == TokenKind::Bang {
              let mut inner = vec![SyntaxElement::Token(self.bump())];
-             if matches!(self.current_kind(), TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | TokenKind::Hidden) || self.current_kind() == TokenKind::Pure {
+             if self.is_naming_ident() || self.current_kind() == TokenKind::Pure {
                  inner.push(SyntaxElement::Token(self.bump()));
              }
              results.push(SyntaxElement::Node(SyntaxNode::new(NodeKind::Effect, inner)));

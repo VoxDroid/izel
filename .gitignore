@@ -10,3 +10,4 @@ Izel.lock
 /Izel.lock
 **/*.rs.bk
 .DS_Store
+*.txt

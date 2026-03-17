@@ -49,7 +49,7 @@ impl<'a> Lowerer<'a> {
 
         for child in &node.children {
             match child {
-                SyntaxElement::Token(token) if matches!(token.kind, TokenKind::SelfKw | TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge) => {
+                SyntaxElement::Token(token) if self.is_naming_ident(token.kind) => {
                     name = self.source[token.span.lo.0 as usize..token.span.hi.0 as usize].to_string();
                 }
                 SyntaxElement::Node(n) if n.kind == NodeKind::GenericParams => {
@@ -93,7 +93,7 @@ impl<'a> Lowerer<'a> {
 
         for child in &node.children {
             match child {
-                SyntaxElement::Token(token) if matches!(token.kind, TokenKind::SelfKw | TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge) => {
+                SyntaxElement::Token(token) if self.is_naming_ident(token.kind) => {
                     name = self.source[token.span.lo.0 as usize..token.span.hi.0 as usize].to_string();
                 }
                 SyntaxElement::Node(n) if n.kind == NodeKind::GenericParams => {
@@ -120,7 +120,7 @@ impl<'a> Lowerer<'a> {
 
         for child in &node.children {
             match child {
-                SyntaxElement::Token(token) if matches!(token.kind, TokenKind::SelfKw | TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge) => {
+                SyntaxElement::Token(token) if self.is_naming_ident(token.kind) => {
                     name = self.source[token.span.lo.0 as usize..token.span.hi.0 as usize].to_string();
                 }
                 SyntaxElement::Node(n) => {
@@ -181,7 +181,7 @@ impl<'a> Lowerer<'a> {
 
         for child in &node.children {
             match child {
-                SyntaxElement::Token(token) if matches!(token.kind, TokenKind::SelfKw | TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge) => {
+                SyntaxElement::Token(token) if self.is_naming_ident(token.kind) => {
                     name = self.source[token.span.lo.0 as usize..token.span.hi.0 as usize].to_string();
                 }
                 SyntaxElement::Node(n) => {
@@ -330,7 +330,7 @@ impl<'a> Lowerer<'a> {
             NodeKind::Ident => {
                  for child in &node.children {
                       if let SyntaxElement::Token(token) = child {
-                           if matches!(token.kind, TokenKind::SelfKw | TokenKind::Ident | TokenKind::Next | TokenKind::Loop | TokenKind::Each | TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | TokenKind::Forge) {
+                           if self.is_naming_ident(token.kind) {
                                 let text = &self.source[token.span.lo.0 as usize..token.span.hi.0 as usize].to_string();
                                 return ast::Expr::Ident(text.clone(), token.span);
                            }
@@ -352,8 +352,9 @@ impl<'a> Lowerer<'a> {
                            TokenKind::EqEq => ast::BinaryOp::Eq,
                            TokenKind::NotEq => ast::BinaryOp::Ne,
                            TokenKind::Pipe => ast::BinaryOp::Pipeline,
-                           TokenKind::And => ast::BinaryOp::And,
-                           TokenKind::Or => ast::BinaryOp::Or,
+                            TokenKind::QuestionQuestion => return self.desugar_coalesce(lhs, rhs),
+                            TokenKind::And => ast::BinaryOp::And,
+                            TokenKind::Or => ast::BinaryOp::Or,
                            _ => ast::BinaryOp::Add,
                       }
                       _ => ast::BinaryOp::Add,
@@ -518,6 +519,35 @@ impl<'a> Lowerer<'a> {
                     body: ast::Expr::Return(Box::new(ast::Expr::Ident("e".to_string(), Span::dummy()))),
                     span: Span::dummy(),
                 }
+            ]
+        }
+    }
+
+    fn desugar_coalesce(&self, lhs: ast::Expr, rhs: ast::Expr) -> ast::Expr {
+        // x ?? y -> branch x { Some(v) => v, None => y, Ok(v) => v, Err(_) => y }
+        ast::Expr::Branch {
+            target: Box::new(lhs),
+            arms: vec![
+                ast::Arm {
+                    pattern: ast::Pattern::Variant("Some".to_string(), vec![ast::Pattern::Ident("v".to_string())]),
+                    body: ast::Expr::Ident("v".to_string(), Span::dummy()),
+                    span: Span::dummy(),
+                },
+                ast::Arm {
+                    pattern: ast::Pattern::Ident("None".to_string()),
+                    body: rhs.clone(),
+                    span: Span::dummy(),
+                },
+                ast::Arm {
+                    pattern: ast::Pattern::Variant("Ok".to_string(), vec![ast::Pattern::Ident("v".to_string())]),
+                    body: ast::Expr::Ident("v".to_string(), Span::dummy()),
+                    span: Span::dummy(),
+                },
+                ast::Arm {
+                    pattern: ast::Pattern::Ident("_".to_string()),
+                    body: rhs,
+                    span: Span::dummy(),
+                },
             ]
         }
     }
@@ -731,5 +761,19 @@ impl<'a> Lowerer<'a> {
             }
         }
         String::new()
+    }
+
+    fn is_naming_ident(&self, kind: TokenKind) -> bool {
+        match kind {
+            TokenKind::Ident | TokenKind::SelfKw | TokenKind::Next | TokenKind::Loop | TokenKind::Each | 
+            TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | 
+            TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | 
+            TokenKind::Hidden | TokenKind::Draw | TokenKind::Seek | TokenKind::Catch |
+            TokenKind::Flow | TokenKind::Tide | TokenKind::Zone | TokenKind::Bridge |
+            TokenKind::Raw | TokenKind::Echo | TokenKind::Ward | TokenKind::Scroll |
+            TokenKind::Dual | TokenKind::Alias | TokenKind::Pkg | TokenKind::Comptime |
+            TokenKind::Static | TokenKind::Extern | TokenKind::Bind => true,
+            _ => false,
+        }
     }
 }

@@ -159,7 +159,6 @@ impl TypeChecker {
                  if let Type::Function { effects: declared, .. } = self.prune(&sig) {
                      if !self.unify_effects(&collected, &declared) {
                          // TODO: Proper diagnostic
-                             f.name, self.prune_effects(&collected), self.prune_effects(&declared));
                      }
                  }
              }
@@ -199,6 +198,24 @@ impl TypeChecker {
                 let target = self.lower_ast_type(&i.target);
                 if let Some(weave_ty) = &i.weave {
                     if let ast::Type::Prim(weave_name) = weave_ty {
+                        // Coherence: Check for duplicate implementation
+                        if let Some(impls) = self.trait_impls.get(weave_name) {
+                            for (existing_ty, _) in impls {
+                                if existing_ty == &target {
+                                    eprintln!("Error: Duplicate implementation of weave {} for type {:?}", weave_name, target);
+                                    return;
+                                }
+                            }
+                        }
+                        // Orphan Rule: Either weave or type must be local
+                        let weave_is_local = self.weaves.contains_key(weave_name);
+                        let type_is_local = matches!(self.prune(&target), Type::Adt(_) | Type::Static(_));
+                        
+                        if !weave_is_local && !type_is_local {
+                            eprintln!("Error: Orphan rule violation: Cannot implement foreign weave {} for foreign type {:?}", weave_name, target);
+                            return;
+                        }
+
                         self.trait_impls.entry(weave_name.clone())
                             .or_default()
                             .push((target, i.clone()));
@@ -229,8 +246,10 @@ impl TypeChecker {
                 for p in &f.params {
                     params.push(self.lower_ast_type(&p.ty));
                 }
-                let ret = Box::new(self.lower_ast_type(&f.ret_type));
                 
+                let mut ret = Box::new(self.lower_ast_type(&f.ret_type));
+                self.apply_lifetime_elision(&mut params, &mut ret);
+
                 let mut effects = Vec::new();
                 for e in &f.effects {
                     effects.push(match e.as_str() {
@@ -241,7 +260,7 @@ impl TypeChecker {
                         _ => Effect::User(e.clone()),
                     });
                 }
-                
+
                 let effect_set = if f.effects.is_empty() {
                     self.new_effect_var()
                 } else if f.effects.contains(&"pure".to_string()) {
@@ -253,7 +272,7 @@ impl TypeChecker {
                 let ty = Type::Function { 
                     params, 
                     ret, 
-                    effects: effect_set.clone()
+                    effects: effect_set
                 };
                 
                 self.pop_scope();
@@ -361,7 +380,7 @@ impl TypeChecker {
             }
             ast::Type::Pointer(inner, m) => {
                 let inner_ty = self.lower_ast_type(inner);
-                Type::Pointer(Box::new(inner_ty), *m)
+                Type::Pointer(Box::new(inner_ty), *m, type_system::Lifetime::Anonymous(0))
             }
             ast::Type::Path(parts, _gen_args) => {
                 if parts.len() > 1 {
@@ -432,7 +451,7 @@ impl TypeChecker {
             }
             (Type::Optional(o1), Type::Optional(o2)) => self.unify(&o1, &o2),
             (Type::Cascade(c1), Type::Cascade(c2)) => self.unify(&c1, &c2),
-            (Type::Pointer(p1, m1), Type::Pointer(p2, m2)) => m1 == m2 && self.unify(&p1, &p2),
+            (Type::Pointer(p1, m1, l1), Type::Pointer(p2, m2, l2)) => m1 == m2 && l1 == l2 && self.unify(&p1, &p2),
             (Type::Function { params: p1, ret: r1, effects: e1 }, Type::Function { params: p2, ret: r2, effects: e2 }) => {
                 if p1.len() != p2.len() { return false; }
                 for (p1, p2) in p1.iter().zip(p2.iter()) {
@@ -617,10 +636,10 @@ impl TypeChecker {
                         self.unify(&it, &Type::Prim(PrimType::Bool));
                         it
                     }
-                    ast::UnaryOp::Ref(m) => Type::Pointer(Box::new(it), *m),
+                    ast::UnaryOp::Ref(m) => Type::Pointer(Box::new(it), *m, type_system::Lifetime::Anonymous(0)),
                     ast::UnaryOp::Deref => {
                         let res = self.new_var();
-                        self.unify(&it, &Type::Pointer(Box::new(res.clone()), false)); // can be mut or not
+                        self.unify(&it, &Type::Pointer(Box::new(res.clone()), false, type_system::Lifetime::Anonymous(0))); // can be mut or not
                         res
                     }
                     _ => it,
@@ -807,7 +826,7 @@ impl TypeChecker {
                 }
                 self.check_and_adjust(var_id, var_level, &ret)
             }
-            Type::Optional(inner) | Type::Cascade(inner) | Type::Pointer(inner, _) => {
+            Type::Optional(inner) | Type::Cascade(inner) | Type::Pointer(inner, _, _) => {
                 self.check_and_adjust(var_id, var_level, &inner)
             }
             Type::Static(fields) => {
@@ -863,7 +882,7 @@ impl TypeChecker {
                 self.find_gen_vars(&ret, vars, seen, effect_vars, seen_effects, names, seen_names);
                 self.find_gen_effect_vars(&effects, effect_vars, seen_effects);
             }
-            Type::Optional(inner) | Type::Cascade(inner) | Type::Pointer(inner, _) => {
+            Type::Optional(inner) | Type::Cascade(inner) | Type::Pointer(inner, _, _) => {
                 self.find_gen_vars(&inner, vars, seen, effect_vars, seen_effects, names, seen_names);
             }
             Type::Static(fields) => {
@@ -973,7 +992,7 @@ impl TypeChecker {
             },
             Type::Optional(inner) => Type::Optional(Box::new(self.substitute_scheme(inner, mapping, effect_mapping, name_mapping))),
             Type::Cascade(inner) => Type::Cascade(Box::new(self.substitute_scheme(inner, mapping, effect_mapping, name_mapping))),
-            Type::Pointer(inner, m) => Type::Pointer(Box::new(self.substitute_scheme(inner, mapping, effect_mapping, name_mapping)), *m),
+            Type::Pointer(inner, m, l) => Type::Pointer(Box::new(self.substitute_scheme(inner, mapping, effect_mapping, name_mapping)), *m, l.clone()),
             Type::Static(fields) => Type::Static(
                 fields.iter().map(|(n, t)| (n.clone(), self.substitute_scheme(t, mapping, effect_mapping, name_mapping))).collect()
             ),
@@ -1040,5 +1059,72 @@ mod tests {
         assert!(tc.unify_effects(&row, &concrete));
         let pruned_tail = tc.prune_effects(&tail);
         assert_eq!(pruned_tail, EffectSet::Concrete(vec![Effect::Alloc]));
+    }
+}
+
+impl TypeChecker {
+    fn apply_lifetime_elision(&mut self, params: &mut [Type], ret: &mut Type) {
+        let mut input_lifetimes = Vec::new();
+        for p in params.iter() {
+            self.collect_lifetimes(p, &mut input_lifetimes);
+        }
+
+        if input_lifetimes.len() == 1 {
+            let elided = input_lifetimes[0].clone();
+            self.replace_elided_lifetimes(ret, &elided);
+        } else if params.len() > 0 {
+            // Check for &self (simplified: first parameter being a pointer)
+            if let Type::Pointer(_, _, life) = &params[0] {
+                self.replace_elided_lifetimes(ret, life);
+            }
+        }
+    }
+
+    fn collect_lifetimes(&self, ty: &Type, lifetimes: &mut Vec<type_system::Lifetime>) {
+        let ty = self.prune(ty);
+        match ty {
+            Type::Pointer(_, _, l) => {
+                lifetimes.push(l.clone());
+            }
+            Type::Optional(inner) | Type::Cascade(inner) => self.collect_lifetimes(&inner, lifetimes),
+            Type::Function { params, ret, .. } => {
+                for p in params { self.collect_lifetimes(&p, lifetimes); }
+                self.collect_lifetimes(&ret, lifetimes);
+            }
+            _ => {}
+        }
+    }
+
+    fn replace_elided_lifetimes(&mut self, ty: &mut Type, lifetime: &type_system::Lifetime) {
+        // We need to mutate the actual type, but match on its pruned form.
+        // This is tricky because self.prune returns a copy.
+        // Let's implement pruning-aware mutation carefully.
+        
+        match ty {
+            Type::Var(id) => {
+                let id = *id;
+                if let Some(bound) = self.substitutions.get(&id).cloned() {
+                    let mut bound = bound;
+                    self.replace_elided_lifetimes(&mut bound, lifetime);
+                    self.substitutions.insert(id, bound);
+                }
+            }
+            Type::Pointer(inner, _, l) => {
+                if let type_system::Lifetime::Anonymous(0) = l {
+                    *l = lifetime.clone();
+                }
+                self.replace_elided_lifetimes(inner, lifetime);
+            }
+            Type::Optional(inner) | Type::Cascade(inner) => {
+                self.replace_elided_lifetimes(inner, lifetime);
+            }
+            Type::Function { params, ret, .. } => {
+                for p in params {
+                    self.replace_elided_lifetimes(p, lifetime);
+                }
+                self.replace_elided_lifetimes(ret, lifetime);
+            }
+            _ => {}
+        }
     }
 }

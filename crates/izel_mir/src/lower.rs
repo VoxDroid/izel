@@ -1,37 +1,32 @@
 use crate::*;
-use izel_parser::cst::{SyntaxNode, NodeKind, SyntaxElement};
-use izel_lexer::TokenKind;
+use izel_parser::ast;
+use izel_typeck::type_system::Type;
 
-pub struct MirLowerer<'a> {
-    source: &'a str,
+pub struct MirLowerer {
     body: MirBody,
     current_block: BlockId,
     scopes: Vec<std::collections::HashMap<String, Local>>,
 }
 
-impl<'a> MirLowerer<'a> {
-    pub fn new(source: &'a str) -> Self {
+impl MirLowerer {
+    pub fn new() -> Self {
         let body = MirBody::new();
         let entry = body.entry;
         Self { 
-            source, 
             body, 
             current_block: entry,
             scopes: vec![std::collections::HashMap::new()],
         }
     }
 
-    pub fn lower_forge(&mut self, node: &SyntaxNode) -> MirBody {
-        // Find the block
-        for child in &node.children {
-            if let SyntaxElement::Node(child_node) = child {
-                if child_node.kind == NodeKind::Block {
-                    self.lower_block(child_node);
-                }
-            }
+    pub fn lower_forge(&mut self, forge: &ast::Forge) -> MirBody {
+        // In a real compiler, forge would already have types.
+        // For now we'll assume they are available or we lower from typed AST.
+        
+        if let Some(body) = &forge.body {
+            self.lower_block(body);
         }
         
-        // Ensure terminator
         let block = self.body.blocks.node_weight_mut(self.current_block).unwrap();
         if block.terminator.is_none() {
             block.terminator = Some(Terminator::Return);
@@ -40,151 +35,95 @@ impl<'a> MirLowerer<'a> {
         std::mem::replace(&mut self.body, MirBody::new())
     }
 
-    fn lower_block(&mut self, node: &SyntaxNode) {
+    fn lower_block(&mut self, block: &ast::Block) {
         self.scopes.push(std::collections::HashMap::new());
-        for child in &node.children {
-            if let SyntaxElement::Node(child_node) = child {
-                match child_node.kind {
-                    NodeKind::LetStmt => {
-                        self.lower_let(child_node);
-                    }
-                    NodeKind::ExprStmt => {
-                        self.lower_expr_stmt(child_node);
-                    }
-                    NodeKind::Block => {
-                        self.lower_block(child_node);
-                    }
-                    _ => {}
-                }
-            }
+        for stmt in &block.stmts {
+            self.lower_stmt(stmt);
+        }
+        if let Some(expr) = &block.expr {
+            self.lower_expr(expr);
         }
         self.scopes.pop();
     }
 
-    fn lower_let(&mut self, node: &SyntaxNode) {
-        let mut name = "unnamed".to_string();
-        let mut value_node = None;
-
-        for child in &node.children {
-            if let SyntaxElement::Token(token) = child {
-                if token.kind == TokenKind::Ident {
-                    let span = token.span;
-                    name = self.source[span.lo.0 as usize..span.hi.0 as usize].to_string();
+    fn lower_stmt(&mut self, stmt: &ast::Stmt) {
+        match stmt {
+            ast::Stmt::Let { name, ty: _, init, .. } => {
+                if let Some(val_expr) = init {
+                    let rvalue = self.lower_expr(val_expr);
+                    let local = Local(self.body.locals.len());
+                    // Dummy type for now, should come from TAST
+                    self.body.locals.push(LocalData { name: name.clone(), ty: Type::Error });
+                    self.scopes.last_mut().unwrap().insert(name.clone(), local);
+                    
+                    let instr = Instruction::Assign(Place { local }, rvalue);
+                    self.body.blocks.node_weight_mut(self.current_block).unwrap().instructions.push(instr);
                 }
-            } else if let SyntaxElement::Node(child_node) = child {
-                value_node = Some(child_node);
             }
-        }
-
-        if let Some(expr) = value_node {
-            let rvalue = self.lower_expr(expr);
-            
-            let local = Local(self.body.locals.len());
-            self.body.locals.push(LocalData { name: name.clone() });
-            
-            self.scopes.last_mut().unwrap().insert(name, local);
-            
-            let instr = Instruction::Assign(
-                Place { local },
-                rvalue
-            );
-            self.body.blocks.node_weight_mut(self.current_block).unwrap().instructions.push(instr);
+            ast::Stmt::Expr(expr) => {
+                self.lower_expr(expr);
+            }
+            _ => {}
         }
     }
 
-    fn lower_expr_stmt(&mut self, node: &SyntaxNode) {
-        for child in &node.children {
-            if let SyntaxElement::Node(child_node) = child {
-                self.lower_expr(child_node);
+    fn lower_expr(&mut self, expr: &ast::Expr) -> Rvalue {
+        match expr {
+            ast::Expr::Literal(lit) => {
+                let constant = match lit {
+                    ast::Literal::Int(v) => Constant::Int(*v),
+                    ast::Literal::Float(v) => Constant::Float(*v),
+                    ast::Literal::Bool(v) => Constant::Bool(*v),
+                    ast::Literal::Str(s) => Constant::Str(s.clone()),
+                    ast::Literal::Nil => Constant::Bool(false), // TODO
+                };
+                Rvalue::Use(Operand::Constant(constant))
             }
-        }
-    }
-
-    fn lower_expr(&mut self, node: &SyntaxNode) -> Rvalue {
-        match node.kind {
-            NodeKind::Literal => {
-                let token = node.children.iter().find_map(|e| {
-                    if let SyntaxElement::Token(t) = e { Some(t) } else { None }
-                }).expect("Literal node should have a token");
-                
-                let text = &self.source[token.span.lo.0 as usize..token.span.hi.0 as usize];
-                match token.kind {
-                    TokenKind::Int { .. } => {
-                        let val: i128 = text.replace('_', "").parse().unwrap_or(0);
-                        Rvalue::Use(Operand::Constant(Constant::Int(val)))
-                    }
-                    TokenKind::Float => {
-                        let val: f64 = text.replace('_', "").parse().unwrap_or(0.0);
-                        Rvalue::Use(Operand::Constant(Constant::Float(val)))
-                    }
-                    TokenKind::True => Rvalue::Use(Operand::Constant(Constant::Bool(true))),
-                    TokenKind::False => Rvalue::Use(Operand::Constant(Constant::Bool(false))),
-                    TokenKind::Str { .. } => {
-                        let s = text.trim_matches('"').to_string();
-                        Rvalue::Use(Operand::Constant(Constant::Str(s)))
-                    }
-                    _ => Rvalue::Use(Operand::Constant(Constant::Int(0))),
-                }
-            }
-            NodeKind::Ident => {
-                let text = &self.source[node.span().lo.0 as usize..node.span().hi.0 as usize];
+            ast::Expr::Ident(name, _) => {
                 for scope in self.scopes.iter().rev() {
-                    if let Some(&local) = scope.get(text) {
+                    if let Some(&local) = scope.get(name) {
+                        // In ownership logic, we'd decide Copy vs Move here
                         return Rvalue::Use(Operand::Copy(Place { local }));
                     }
                 }
-                Rvalue::Use(Operand::Constant(Constant::Int(0))) 
+                Rvalue::Use(Operand::Constant(Constant::Int(0)))
             }
-            NodeKind::ParenExpr => {
-                let inner = node.children.iter().find_map(|e| {
-                    if let SyntaxElement::Node(n) = e { Some(n) } else { None }
-                }).expect("ParenExpr should have an inner expression");
-                self.lower_expr(inner)
-            }
-            NodeKind::BinaryExpr => {
-                let mut left = None;
-                let mut op = None;
-                let mut right = None;
-
-                for child in &node.children {
-                    match child {
-                        SyntaxElement::Node(n) => {
-                            if left.is_none() { left = Some(n); } else { right = Some(n); }
-                        }
-                        SyntaxElement::Token(t) => {
-                            op = Some(match t.kind {
-                                TokenKind::Plus => BinOp::Add,
-                                TokenKind::Minus => BinOp::Sub,
-                                TokenKind::Star => BinOp::Mul,
-                                TokenKind::Slash => BinOp::Div,
-                                TokenKind::EqEq => BinOp::Eq,
-                                TokenKind::NotEq => BinOp::Ne,
-                                TokenKind::Lt => BinOp::Lt,
-                                TokenKind::Le => BinOp::Le,
-                                TokenKind::Gt => BinOp::Gt,
-                                TokenKind::Ge => BinOp::Ge,
-                                _ => BinOp::Add, // Should not happen with correct parser
-                            });
+            ast::Expr::Unary(op, expr) => {
+                let rvalue = self.lower_expr(expr);
+                match op {
+                    ast::UnaryOp::Ref(is_mut) => {
+                        let operand = self.rvalue_to_operand(rvalue);
+                        if let Operand::Copy(place) | Operand::Move(place) = operand {
+                            Rvalue::Ref(place, *is_mut)
+                        } else {
+                            Rvalue::Use(operand)
                         }
                     }
+                    ast::UnaryOp::Not => Rvalue::UnaryOp(UnOp::Not, self.rvalue_to_operand(rvalue)),
+                    ast::UnaryOp::Neg => Rvalue::UnaryOp(UnOp::Neg, self.rvalue_to_operand(rvalue)),
+                    _ => Rvalue::Use(self.rvalue_to_operand(rvalue)),
                 }
-
-                if let (Some(l), Some(o), Some(r)) = (left, op, right) {
-                    let lr = self.lower_expr(l);
-                    let rr = self.lower_expr(r);
-                    
-                    // We need operands for BinOp. Create temporary locals if needed?
-                    // For now, let's assume we can simplify this or use a more complex Rvalue.
-                    // Actually MIR Rvalue::BinaryOp takes Operands.
-                    // I'll need to emit instructions to move Rvalues into locals.
-                    
-                    let l_op = self.rvalue_to_operand(lr);
-                    let r_op = self.rvalue_to_operand(rr);
-                    
-                    Rvalue::BinaryOp(o, l_op, r_op)
-                } else {
-                    Rvalue::Use(Operand::Constant(Constant::Int(0)))
-                }
+            }
+            ast::Expr::Binary(op, left, right) => {
+                let lr = self.lower_expr(left);
+                let rr = self.lower_expr(right);
+                let l_op = self.rvalue_to_operand(lr);
+                let r_op = self.rvalue_to_operand(rr);
+                
+                let mir_op = match op {
+                    ast::BinaryOp::Add => BinOp::Add,
+                    ast::BinaryOp::Sub => BinOp::Sub,
+                    ast::BinaryOp::Mul => BinOp::Mul,
+                    ast::BinaryOp::Div => BinOp::Div,
+                    ast::BinaryOp::Eq => BinOp::Eq,
+                    ast::BinaryOp::Ne => BinOp::Ne,
+                    ast::BinaryOp::Lt => BinOp::Lt,
+                    ast::BinaryOp::Le => BinOp::Le,
+                    ast::BinaryOp::Gt => BinOp::Gt,
+                    ast::BinaryOp::Ge => BinOp::Ge,
+                    _ => BinOp::Add,
+                };
+                Rvalue::BinaryOp(mir_op, l_op, r_op)
             }
             _ => Rvalue::Use(Operand::Constant(Constant::Int(0))),
         }
@@ -195,7 +134,10 @@ impl<'a> MirLowerer<'a> {
             Rvalue::Use(op) => op,
             _ => {
                 let local = Local(self.body.locals.len());
-                self.body.locals.push(LocalData { name: format!("tmp{}", local.0) });
+                self.body.locals.push(LocalData { 
+                    name: format!("tmp{}", local.0),
+                    ty: Type::Error 
+                });
                 let instr = Instruction::Assign(Place { local }, rvalue);
                 self.body.blocks.node_weight_mut(self.current_block).unwrap().instructions.push(instr);
                 Operand::Move(Place { local })

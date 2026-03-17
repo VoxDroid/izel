@@ -6,6 +6,8 @@ pub type BlockId = NodeIndex;
 
 pub mod lower;
 
+use izel_typeck::type_system::Type;
+
 pub struct MirBody {
     pub blocks: DiGraph<BasicBlock, ControlFlow>,
     pub entry: BlockId,
@@ -14,7 +16,7 @@ pub struct MirBody {
 
 pub struct LocalData {
     pub name: String,
-    // Add type information later
+    pub ty: Type,
 }
 
 pub struct BasicBlock {
@@ -52,6 +54,7 @@ pub enum Rvalue {
     Use(Operand),
     BinaryOp(BinOp, Operand, Operand),
     UnaryOp(UnOp, Operand),
+    Ref(Place, bool), // bool is mut
 }
 
 #[derive(Debug, Clone)]

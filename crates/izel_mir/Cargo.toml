@@ -7,8 +7,9 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+izel_parser = { path = "../izel_parser" }
 izel_span = { path = "../izel_span" }
 izel_lexer = { path = "../izel_lexer" }
-izel_parser = { path = "../izel_parser" }
-petgraph = { workspace = true }
+izel_typeck = { path = "../izel_typeck" }
+petgraph = "0.6"
 indexmap = { workspace = true }

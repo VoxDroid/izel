@@ -11,7 +11,7 @@ members = [
     "crates/izel_resolve",
     "crates/izel_typeck",
     "crates/izel_ast_lower",
-    "crates/izel_driver",
+    "crates/izel_driver", "crates/izel_borrow",
 ]
 
 [workspace.package]
