@@ -16,44 +16,44 @@ pub enum BuiltinWitness {
 pub enum Type {
     /// Primitive types
     Prim(PrimType),
-    
+
     /// User defined shapes/scrolls/duals
     Adt(DefId),
-    
+
     /// Optional types (?T)
     Optional(Box<Type>),
 
     /// Cascade types (T!)
     Cascade(Box<Type>),
-    
+
     /// Pointer types (*T or *~T)
     Pointer(Box<Type>, bool, Lifetime), // bool is mut
-    
+
     /// Functions
     Function {
         params: Vec<Type>,
         ret: Box<Type>,
         effects: EffectSet,
     },
-    
+
     /// Type variables (for inference)
     Var(usize),
-    
+
     /// Generic parameters (<T>)
     Param(String),
-    
+
     /// Tuple or anonymous shapes
     Static(Vec<(String, Type)>),
-    
+
     /// Associated type (e.g. Iterator::Item)
     Assoc(Box<Type>, String),
-    
+
     /// Witness types (Witness<P>)
     Witness(Box<Type>),
 
     /// Built-in witness types (NonZero<T>, InBounds<T>, Sorted<T>)
     BuiltinWitness(BuiltinWitness, Box<Type>),
-    
+
     /// Error sentinel
     Error,
 }
@@ -70,13 +70,23 @@ pub enum Lifetime {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PrimType {
-    I8, I16, I32, I64, I128,
-    U8, U16, U32, U64, U128,
-    F32, F64,
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+    F32,
+    F64,
     Bool,
     Str,
     Void,
     None,
+    ZoneAllocator,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

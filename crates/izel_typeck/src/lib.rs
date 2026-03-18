@@ -1,13 +1,13 @@
 pub mod type_system;
 
 use izel_parser::ast;
-use type_system::{Type, PrimType, Scheme, Effect, EffectSet, BuiltinWitness};
 use izel_resolve::DefId;
 use rustc_hash::FxHashMap;
+use type_system::{BuiltinWitness, Effect, EffectSet, PrimType, Scheme, Type};
 
 pub mod contracts;
-pub use izel_parser::eval::{ConstValue, eval_expr};
 pub use izel_parser::contracts::ContractChecker;
+pub use izel_parser::eval::{eval_expr, ConstValue};
 
 pub struct TypeChecker {
     /// Resolved types for each DefId
@@ -74,7 +74,19 @@ impl TypeChecker {
 
     pub fn define(&mut self, name: String, ty: Type) {
         if let Some(scope) = self.env.last_mut() {
-            scope.insert(name, Scheme { vars: vec![], effect_vars: vec![], names: vec![], bounds: vec![], ty, param_names: vec![], requires: vec![], ensures: vec![] });
+            scope.insert(
+                name,
+                Scheme {
+                    vars: vec![],
+                    effect_vars: vec![],
+                    names: vec![],
+                    bounds: vec![],
+                    ty,
+                    param_names: vec![],
+                    requires: vec![],
+                    ensures: vec![],
+                },
+            );
         }
     }
 
@@ -125,9 +137,7 @@ impl TypeChecker {
 
     fn check_item(&mut self, item: &ast::Item) {
         match item {
-            ast::Item::Forge(f) => {
-                self.check_forge(f)
-            },
+            ast::Item::Forge(f) => self.check_forge(f),
             ast::Item::Impl(i) => {
                 self.check_impl(i);
                 for it in &i.items {
@@ -144,78 +154,86 @@ impl TypeChecker {
     }
 
     fn check_forge(&mut self, f: &ast::Forge) {
-         self.push_scope();
-         
-         // Define generic parameters in scope
-         for gp in &f.generic_params {
-             self.define(gp.name.clone(), Type::Param(gp.name.clone()));
-         }
+        self.push_scope();
 
-         let ret_ty = self.lower_ast_type(&f.ret_type);
-         let old_ret = self.expected_ret.replace(ret_ty.clone());
-         let old_attrs = std::mem::replace(&mut self.current_attributes, f.attributes.clone());
-         
-         for param in &f.params {
-              let pty = self.lower_ast_type(&param.ty);
-              self.define(param.name.clone(), pty.clone());
-         }
-         
-         if let Some(body) = &f.body {
-             let body_effects = self.new_effect_var();
-             self.current_effects.push(body_effects.clone());
-             self.check_block_with_expected(body, Some(&ret_ty));
-             
-             let collected = self.current_effects.pop().unwrap();
-             
-             // Unify body effects with declared/inferred effects
-             if let Some(sig) = self.resolve_name(&f.name) {
-                 if let Type::Function { effects: declared, .. } = self.prune(&sig) {
-                     if !self.unify_effects(&collected, &declared) {
-                         eprintln!("Error: Function has effects {:?} but only declared {:?}", collected, declared);
-                     }
-                 }
-             }
+        // Define generic parameters in scope
+        for gp in &f.generic_params {
+            self.define(gp.name.clone(), Type::Param(gp.name.clone()));
+        }
 
-             // Static verification of postconditions (@ensures)
-             if !f.ensures.is_empty() {
-                 if let Some(expr) = &body.expr {
-                     let ret_val = ::izel_parser::eval::eval_expr(expr, &std::collections::HashMap::new());
-                     if ret_val != ::izel_parser::eval::ConstValue::Unknown {
-                         let diags = contracts::ContractChecker::check_ensures_from_scheme(
-                             &f.name,
-                             &f.ensures,
-                             &ret_val,
-                             body.span,
-                             &std::collections::HashMap::new()
-                         );
-                         self.diagnostics.extend(diags);
-                     }
-                 }
-             }
-         }
-         
-         self.current_attributes = old_attrs;
-         self.expected_ret = old_ret;
-         self.pop_scope();
+        let ret_ty = self.lower_ast_type(&f.ret_type);
+        let old_ret = self.expected_ret.replace(ret_ty.clone());
+        let old_attrs = std::mem::replace(&mut self.current_attributes, f.attributes.clone());
+
+        for param in &f.params {
+            let pty = self.lower_ast_type(&param.ty);
+            self.define(param.name.clone(), pty.clone());
+        }
+
+        if let Some(body) = &f.body {
+            let body_effects = self.new_effect_var();
+            self.current_effects.push(body_effects.clone());
+            self.check_block_with_expected(body, Some(&ret_ty));
+
+            let collected = self.current_effects.pop().unwrap();
+
+            // Unify body effects with declared/inferred effects
+            if let Some(sig) = self.resolve_name(&f.name) {
+                if let Type::Function {
+                    effects: declared, ..
+                } = self.prune(&sig)
+                {
+                    if !self.unify_effects(&collected, &declared) {
+                        eprintln!(
+                            "Error: Function has effects {:?} but only declared {:?}",
+                            collected, declared
+                        );
+                    }
+                }
+            }
+
+            // Static verification of postconditions (@ensures)
+            if !f.ensures.is_empty() {
+                if let Some(expr) = &body.expr {
+                    let ret_val =
+                        ::izel_parser::eval::eval_expr(expr, &std::collections::HashMap::new());
+                    if ret_val != ::izel_parser::eval::ConstValue::Unknown {
+                        let diags = contracts::ContractChecker::check_ensures_from_scheme(
+                            &f.name,
+                            &f.ensures,
+                            &ret_val,
+                            body.span,
+                            &std::collections::HashMap::new(),
+                        );
+                        self.diagnostics.extend(diags);
+                    }
+                }
+            }
+        }
+
+        self.current_attributes = old_attrs;
+        self.expected_ret = old_ret;
+        self.pop_scope();
     }
 
     fn check_impl(&mut self, i: &ast::Impl) {
         let _target = self.lower_ast_type(&i.target);
         if let Some(weave_ty) = &i.weave {
-             if let ast::Type::Prim(weave_name) = weave_ty {
-                 if let Some(w) = self.weaves.get(weave_name).cloned() {
-                     for expected_method in &w.methods {
-                         let found = i.items.iter().find(|item| {
-                             if let ast::Item::Forge(f) = item {
-                                 f.name == expected_method.name
-                             } else { false }
-                         });
-                         
-                         if found.is_none() {
-                         }
-                     }
-                 }
-             }
+            if let ast::Type::Prim(weave_name) = weave_ty {
+                if let Some(w) = self.weaves.get(weave_name).cloned() {
+                    for expected_method in &w.methods {
+                        let found = i.items.iter().find(|item| {
+                            if let ast::Item::Forge(f) = item {
+                                f.name == expected_method.name
+                            } else {
+                                false
+                            }
+                        });
+
+                        if found.is_none() {}
+                    }
+                }
+            }
         }
 
         // Check invariant preservation: if the target shape has invariants,
@@ -259,21 +277,26 @@ impl TypeChecker {
                         if let Some(impls) = self.trait_impls.get(weave_name) {
                             for (existing_ty, _) in impls {
                                 if existing_ty == &target {
-                                    eprintln!("Error: Duplicate implementation of weave {} for type {:?}", weave_name, target);
+                                    eprintln!(
+                                        "Error: Duplicate implementation of weave {} for type {:?}",
+                                        weave_name, target
+                                    );
                                     return;
                                 }
                             }
                         }
                         // Orphan Rule: Either weave or type must be local
                         let weave_is_local = self.weaves.contains_key(weave_name);
-                        let type_is_local = matches!(self.prune(&target), Type::Adt(_) | Type::Static(_));
-                        
+                        let type_is_local =
+                            matches!(self.prune(&target), Type::Adt(_) | Type::Static(_));
+
                         if !weave_is_local && !type_is_local {
                             eprintln!("Error: Orphan rule violation: Cannot implement foreign weave {} for foreign type {:?}", weave_name, target);
                             return;
                         }
 
-                        self.trait_impls.entry(weave_name.clone())
+                        self.trait_impls
+                            .entry(weave_name.clone())
                             .or_default()
                             .push((target, i.clone()));
                     }
@@ -298,14 +321,14 @@ impl TypeChecker {
                         bounds.push((gp.name.clone(), b.clone()));
                     }
                 }
-                
+
                 let mut params = Vec::new();
                 let mut param_names = Vec::new();
                 for p in &f.params {
                     params.push(self.lower_ast_type(&p.ty));
                     param_names.push(p.name.clone());
                 }
-                
+
                 let mut ret = Box::new(self.lower_ast_type(&f.ret_type));
                 self.apply_lifetime_elision(&mut params, &mut ret);
 
@@ -328,14 +351,14 @@ impl TypeChecker {
                     EffectSet::Concrete(effects)
                 };
 
-                let ty = Type::Function { 
-                    params, 
-                    ret, 
-                    effects: effect_set
+                let ty = Type::Function {
+                    params,
+                    ret,
+                    effects: effect_set,
                 };
-                
+
                 self.pop_scope();
-                
+
                 // Generalize it
                 let mut scheme = self.generalize(&ty);
                 scheme.bounds = bounds;
@@ -353,21 +376,22 @@ impl TypeChecker {
                         bounds.push((gp.name.clone(), b.clone()));
                     }
                 }
-                
+
                 let mut fields = vec![];
                 for f in &s.fields {
                     fields.push((f.name.clone(), self.lower_ast_type(&f.ty)));
                 }
                 let ty = Type::Adt(DefId(0)); // Placeholder for actual DefId logic
                 self.pop_scope();
-                
+
                 let mut scheme = self.generalize(&ty);
                 scheme.bounds = bounds;
                 self.define_scheme(s.name.clone(), scheme);
 
                 // Store invariants for later checking in check_impl
                 if !s.invariants.is_empty() {
-                    self.shape_invariants.insert(s.name.clone(), s.invariants.clone());
+                    self.shape_invariants
+                        .insert(s.name.clone(), s.invariants.clone());
                 }
             }
             ast::Item::Alias(a) => {
@@ -391,7 +415,10 @@ impl TypeChecker {
             let ty = self.infer_expr(expr);
             if let Some(et) = expected {
                 if !self.unify(et, &ty) {
-                    eprintln!("Error: Block return type mismatch. Expected {:?}, found {:?}", et, ty);
+                    eprintln!(
+                        "Error: Block return type mismatch. Expected {:?}, found {:?}",
+                        et, ty
+                    );
                 }
             }
         } else if let Some(et) = expected {
@@ -403,8 +430,15 @@ impl TypeChecker {
 
     fn check_stmt(&mut self, stmt: &ast::Stmt) {
         match stmt {
-            ast::Stmt::Expr(e) => { self.infer_expr(e); }
-            ast::Stmt::Let { name, ty, init, span: _ } => {
+            ast::Stmt::Expr(e) => {
+                self.infer_expr(e);
+            }
+            ast::Stmt::Let {
+                name,
+                ty,
+                init,
+                span: _,
+            } => {
                 self.enter_level();
                 let mut var_ty = self.new_var();
                 if let Some(explicit_ty) = ty {
@@ -415,11 +449,14 @@ impl TypeChecker {
                 if let Some(init_expr) = init {
                     let it = self.infer_expr(init_expr);
                     if !self.unify(&var_ty, &it) {
-                        eprintln!("Error: Type mismatch in 'let' initializer. Expected {:?}, found {:?}", var_ty, it);
+                        eprintln!(
+                            "Error: Type mismatch in 'let' initializer. Expected {:?}, found {:?}",
+                            var_ty, it
+                        );
                     }
                 }
                 self.exit_level();
-                
+
                 let scheme = self.generalize(&var_ty);
                 self.define_scheme(name.clone(), scheme);
             }
@@ -529,12 +566,8 @@ impl TypeChecker {
 
         match (&t1, &t2) {
             (Type::Var(id1), Type::Var(id2)) if id1 == id2 => true,
-            (Type::Var(id), other) => {
-                self.occurs_check_and_adjust_levels(*id, other)
-            }
-            (other, Type::Var(id)) => {
-                self.occurs_check_and_adjust_levels(*id, other)
-            }
+            (Type::Var(id), other) => self.occurs_check_and_adjust_levels(*id, other),
+            (other, Type::Var(id)) => self.occurs_check_and_adjust_levels(*id, other),
             (Type::Prim(p1), Type::Prim(p2)) => p1 == p2,
             (Type::Prim(PrimType::None), Type::Optional(_)) => true,
             (Type::Optional(_), Type::Prim(PrimType::None)) => true,
@@ -543,28 +576,51 @@ impl TypeChecker {
             // Cascade and Optional can unify (Cascade is a superset usually)
             (Type::Optional(o), Type::Cascade(c)) => self.unify(o, c),
             (Type::Cascade(c), Type::Optional(o)) => self.unify(c, o),
-            
+
             (Type::Static(f1), Type::Static(f2)) => {
-                if f1.len() != f2.len() { return false; }
+                if f1.len() != f2.len() {
+                    return false;
+                }
                 for ((n1, t1), (n2, t2)) in f1.iter().zip(f2.iter()) {
-                    if n1 != n2 || !self.unify(t1, t2) { return false; }
+                    if n1 != n2 || !self.unify(t1, t2) {
+                        return false;
+                    }
                 }
                 true
             }
             (Type::Optional(o1), Type::Optional(o2)) => self.unify(&o1, &o2),
             (Type::Cascade(c1), Type::Cascade(c2)) => self.unify(&c1, &c2),
-            (Type::Pointer(p1, m1, l1), Type::Pointer(p2, m2, l2)) => m1 == m2 && l1 == l2 && self.unify(&p1, &p2),
+            (Type::Pointer(p1, m1, l1), Type::Pointer(p2, m2, l2)) => {
+                m1 == m2 && l1 == l2 && self.unify(&p1, &p2)
+            }
             (Type::Witness(w1), Type::Witness(w2)) => self.unify(&w1, &w2),
             // Built-in witness types: same kind + inner unification
             (Type::BuiltinWitness(k1, t1), Type::BuiltinWitness(k2, t2)) => {
                 k1 == k2 && self.unify(&t1, &t2)
             }
-            (Type::Function { params: p1, ret: r1, effects: e1 }, Type::Function { params: p2, ret: r2, effects: e2 }) => {
-                if p1.len() != p2.len() { return false; }
-                for (p1, p2) in p1.iter().zip(p2.iter()) {
-                    if !self.unify(p1, p2) { return false; }
+            (
+                Type::Function {
+                    params: p1,
+                    ret: r1,
+                    effects: e1,
+                },
+                Type::Function {
+                    params: p2,
+                    ret: r2,
+                    effects: e2,
+                },
+            ) => {
+                if p1.len() != p2.len() {
+                    return false;
                 }
-                if !self.unify(r1, r2) { return false; }
+                for (p1, p2) in p1.iter().zip(p2.iter()) {
+                    if !self.unify(p1, p2) {
+                        return false;
+                    }
+                }
+                if !self.unify(r1, r2) {
+                    return false;
+                }
                 self.unify_effects(e1, e2)
             }
             (Type::Adt(id1), Type::Adt(id2)) => id1 == id2,
@@ -574,21 +630,31 @@ impl TypeChecker {
             (t, Type::Cascade(c)) => self.unify(t, c),
             (Type::Optional(o), t) => self.unify(o, t),
             (Type::Cascade(c), t) => self.unify(c, t),
-            
-            // Witness promotion: 
+
+            // Witness promotion:
             // Value -> Witness: ONLY in proof mode
-            (Type::Witness(w), t) => if self.is_proof_mode() { self.unify(w, t) } else { false },
+            (Type::Witness(w), t) => {
+                if self.is_proof_mode() {
+                    self.unify(w, t)
+                } else {
+                    false
+                }
+            }
             // Witness -> Value: Always allowed
             (t, Type::Witness(w)) => self.unify(t, w),
 
             // BuiltinWitness -> inner value: Always allowed (extract)
             (t, Type::BuiltinWitness(_, inner)) => self.unify(t, &inner),
             // inner value -> BuiltinWitness: ONLY in proof mode
-            (Type::BuiltinWitness(_, inner), t) => if self.is_proof_mode() { self.unify(&inner, t) } else { false },
-            
-            _ => {
-                false
+            (Type::BuiltinWitness(_, inner), t) => {
+                if self.is_proof_mode() {
+                    self.unify(&inner, t)
+                } else {
+                    false
+                }
             }
+
+            _ => false,
         }
     }
 
@@ -597,15 +663,15 @@ impl TypeChecker {
         // Look through all trait implementations
         // Clone the list of impls to avoid borrow conflict with self.lower_ast_type
         let all_impls: Vec<_> = self.trait_impls.values().flatten().cloned().collect();
-        
+
         for (impl_ty, i) in all_impls {
             // If the base type matches the impl target type
             if self.unify_without_binding(&base, &impl_ty) {
                 for item in &i.items {
                     if let ast::Item::Alias(a) = item {
-                         if a.name == name {
-                             return self.lower_ast_type(&a.ty);
-                         }
+                        if a.name == name {
+                            return self.lower_ast_type(&a.ty);
+                        }
                     }
                 }
             }
@@ -620,15 +686,19 @@ impl TypeChecker {
     pub fn unify_effects(&mut self, e1: &EffectSet, e2: &EffectSet) -> bool {
         let e1 = self.prune_effects(e1);
         let e2 = self.prune_effects(e2);
-        
+
         match (&e1, &e2) {
             (EffectSet::Var(id1), EffectSet::Var(id2)) if id1 == id2 => true,
             (EffectSet::Var(id), other) => self.bind_effect_var(*id, other.clone()),
             (other, EffectSet::Var(id)) => self.bind_effect_var(*id, other.clone()),
             (EffectSet::Concrete(v1), EffectSet::Concrete(v2)) => {
-                if v1.len() != v2.len() { return false; }
+                if v1.len() != v2.len() {
+                    return false;
+                }
                 for e in v1 {
-                    if !v2.contains(e) { return false; }
+                    if !v2.contains(e) {
+                        return false;
+                    }
                 }
                 true
             }
@@ -638,9 +708,12 @@ impl TypeChecker {
                 }
                 false
             }
-            (EffectSet::Concrete(v), EffectSet::Row(vals, tail)) | (EffectSet::Row(vals, tail), EffectSet::Concrete(v)) => {
+            (EffectSet::Concrete(v), EffectSet::Row(vals, tail))
+            | (EffectSet::Row(vals, tail), EffectSet::Concrete(v)) => {
                 for e in vals {
-                    if !v.contains(e) { return false; }
+                    if !v.contains(e) {
+                        return false;
+                    }
                 }
                 let remaining: Vec<_> = v.iter().filter(|e| !vals.contains(e)).cloned().collect();
                 self.unify_effects(tail, &EffectSet::Concrete(remaining))
@@ -653,7 +726,7 @@ impl TypeChecker {
     pub fn accumulate_effects(&mut self, current: &EffectSet, new: &EffectSet) {
         let current_pruned = self.prune_effects(current);
         let new_pruned = self.prune_effects(new);
-        
+
         match new_pruned {
             EffectSet::Concrete(v) => {
                 for e in v {
@@ -699,14 +772,16 @@ impl TypeChecker {
 
     fn bind_effect_var(&mut self, id: usize, effects: EffectSet) -> bool {
         if let EffectSet::Var(other_id) = effects {
-            if id == other_id { return true; }
+            if id == other_id {
+                return true;
+            }
         }
         if self.occurs_check_effects(id, &effects) {
             return false;
         }
         let var_level = self.effect_var_levels.get(&id).cloned().unwrap_or(0);
         self.adjust_effect_levels(var_level, &effects);
-        
+
         self.effect_substitutions.insert(id, effects);
         true
     }
@@ -757,7 +832,9 @@ impl TypeChecker {
 
     fn bind_var(&mut self, id: usize, ty: Type) {
         if let Type::Var(other_id) = ty {
-             if id == other_id { return; }
+            if id == other_id {
+                return;
+            }
         }
         self.substitutions.insert(id, ty);
     }
@@ -782,12 +859,20 @@ impl TypeChecker {
                 let lt = self.infer_expr(lhs);
                 let rt = self.infer_expr(rhs);
                 match op {
-                    ast::BinaryOp::Add | ast::BinaryOp::Sub | ast::BinaryOp::Mul | ast::BinaryOp::Div => {
+                    ast::BinaryOp::Add
+                    | ast::BinaryOp::Sub
+                    | ast::BinaryOp::Mul
+                    | ast::BinaryOp::Div => {
                         self.unify(&lt, &Type::Prim(PrimType::I32)); // Placeholder
                         self.unify(&rt, &Type::Prim(PrimType::I32));
                         Type::Prim(PrimType::I32)
                     }
-                    ast::BinaryOp::Eq | ast::BinaryOp::Ne | ast::BinaryOp::Lt | ast::BinaryOp::Gt | ast::BinaryOp::Le | ast::BinaryOp::Ge => {
+                    ast::BinaryOp::Eq
+                    | ast::BinaryOp::Ne
+                    | ast::BinaryOp::Lt
+                    | ast::BinaryOp::Gt
+                    | ast::BinaryOp::Le
+                    | ast::BinaryOp::Ge => {
                         self.unify(&lt, &rt);
                         Type::Prim(PrimType::Bool)
                     }
@@ -808,16 +893,29 @@ impl TypeChecker {
                         self.unify(&it, &Type::Prim(PrimType::Bool));
                         it
                     }
-                    ast::UnaryOp::Ref(m) => Type::Pointer(Box::new(it), *m, type_system::Lifetime::Anonymous(0)),
+                    ast::UnaryOp::Ref(m) => {
+                        Type::Pointer(Box::new(it), *m, type_system::Lifetime::Anonymous(0))
+                    }
                     ast::UnaryOp::Deref => {
                         let res = self.new_var();
-                        self.unify(&it, &Type::Pointer(Box::new(res.clone()), false, type_system::Lifetime::Anonymous(0))); // can be mut or not
+                        self.unify(
+                            &it,
+                            &Type::Pointer(
+                                Box::new(res.clone()),
+                                false,
+                                type_system::Lifetime::Anonymous(0),
+                            ),
+                        ); // can be mut or not
                         res
                     }
                     _ => it,
                 }
             }
-            ast::Expr::Given { cond, then_block, else_expr } => {
+            ast::Expr::Given {
+                cond,
+                then_block,
+                else_expr,
+            } => {
                 let ct = self.infer_expr(cond);
                 self.unify(&ct, &Type::Prim(PrimType::Bool));
                 let res_ty = self.new_var();
@@ -834,30 +932,36 @@ impl TypeChecker {
                 let ot = self.infer_expr(obj);
                 if let Type::Static(fields) = self.prune(&ot) {
                     if let Some((_, fty)) = fields.iter().find(|(name, _)| name == field) {
-                         return fty.clone();
+                        return fty.clone();
                     }
                 }
                 self.new_var()
             }
             ast::Expr::Call(callee, args) => {
                 let ct = self.infer_expr(callee);
-                
+
                 // Static verification of @requires at call-sites
                 if let ast::Expr::Ident(name, span) = callee.as_ref() {
                     if let Some(scheme) = self.resolve_scheme(name) {
                         if !scheme.requires.is_empty() {
                             let mut eval_args = Vec::new();
                             for arg in args {
-                                eval_args.push(::izel_parser::eval::eval_expr(arg, &std::collections::HashMap::new()));
+                                eval_args.push(::izel_parser::eval::eval_expr(
+                                    arg,
+                                    &std::collections::HashMap::new(),
+                                ));
                             }
                             // Only check if all args are known constants
-                            if eval_args.iter().all(|a| *a != ::izel_parser::eval::ConstValue::Unknown) {
+                            if eval_args
+                                .iter()
+                                .all(|a| *a != ::izel_parser::eval::ConstValue::Unknown)
+                            {
                                 let diags = contracts::ContractChecker::check_requires_from_scheme(
                                     name,
                                     &scheme.param_names,
                                     &scheme.requires,
                                     &eval_args,
-                                    *span
+                                    *span,
                                 );
                                 self.diagnostics.extend(diags);
                             }
@@ -865,38 +969,48 @@ impl TypeChecker {
                     }
                 }
 
-                if let Type::Function { params, ret, effects } = self.prune(&ct) {
-                     let current = self.current_effects.last().cloned();
-                     if let Some(curr) = current {
-                         self.accumulate_effects(&curr, &effects);
-                     }
-                     for (arg, pty) in args.iter().zip(params.iter()) {
-                          let at = self.infer_expr(arg);
-                          if !self.unify(pty, &at) {
-                               eprintln!("Error: Argument type mismatch. Expected {:?}, found {:?}", pty, at);
-                          }
-                     }
-                     *ret
+                if let Type::Function {
+                    params,
+                    ret,
+                    effects,
+                } = self.prune(&ct)
+                {
+                    let current = self.current_effects.last().cloned();
+                    if let Some(curr) = current {
+                        self.accumulate_effects(&curr, &effects);
+                    }
+                    for (arg, pty) in args.iter().zip(params.iter()) {
+                        let at = self.infer_expr(arg);
+                        if !self.unify(pty, &at) {
+                            eprintln!(
+                                "Error: Argument type mismatch. Expected {:?}, found {:?}",
+                                pty, at
+                            );
+                        }
+                    }
+                    *ret
                 } else {
-                     for arg in args { self.infer_expr(arg); }
-                     let res = self.new_var();
-                     res
+                    for arg in args {
+                        self.infer_expr(arg);
+                    }
+                    let res = self.new_var();
+                    res
                 }
             }
             ast::Expr::StructLiteral { path, fields } => {
                 let mut struct_ty = self.new_var();
                 if let ast::Type::Prim(name) = path {
-                     if let Some(ty) = self.resolve_name(name) {
-                          struct_ty = ty;
-                     }
+                    if let Some(ty) = self.resolve_name(name) {
+                        struct_ty = ty;
+                    }
                 }
                 if let Type::Static(st_fields) = self.prune(&struct_ty) {
-                     for (fname, fexpr) in fields {
-                          if let Some((_, fty)) = st_fields.iter().find(|(n, _)| n == fname) {
-                               let et = self.infer_expr(fexpr);
-                               self.unify(&et, fty);
-                          }
-                     }
+                    for (fname, fexpr) in fields {
+                        if let Some((_, fty)) = st_fields.iter().find(|(n, _)| n == fname) {
+                            let et = self.infer_expr(fexpr);
+                            self.unify(&et, fty);
+                        }
+                    }
                 }
                 struct_ty
             }
@@ -972,6 +1086,18 @@ impl TypeChecker {
                 }
                 Type::Error
             }
+            ast::Expr::Zone { name, body } => {
+                self.push_scope();
+                // Bind `<name>::allocator()` equivalent.
+                // For now we just bind the name itself to a ZoneAllocator handle
+                self.define(name.clone(), Type::Prim(PrimType::ZoneAllocator));
+
+                let res_ty = self.new_var();
+                self.check_block_with_expected(body, Some(&res_ty));
+
+                self.pop_scope();
+                res_ty
+            }
         };
         // TODO: Store in expr_types
         res
@@ -1023,18 +1149,27 @@ impl TypeChecker {
                 }
                 true
             }
-            Type::Function { params, ret, effects: _ } => {
+            Type::Function {
+                params,
+                ret,
+                effects: _,
+            } => {
                 for p in params {
-                    if !self.check_and_adjust(var_id, var_level, &p) { return false; }
+                    if !self.check_and_adjust(var_id, var_level, &p) {
+                        return false;
+                    }
                 }
                 self.check_and_adjust(var_id, var_level, &ret)
             }
-            Type::Optional(inner) | Type::Cascade(inner) | Type::Pointer(inner, _, _) | Type::BuiltinWitness(_, inner) => {
-                self.check_and_adjust(var_id, var_level, &inner)
-            }
+            Type::Optional(inner)
+            | Type::Cascade(inner)
+            | Type::Pointer(inner, _, _)
+            | Type::BuiltinWitness(_, inner) => self.check_and_adjust(var_id, var_level, &inner),
             Type::Static(fields) => {
                 for (_, t) in fields {
-                    if !self.check_and_adjust(var_id, var_level, &t) { return false; }
+                    if !self.check_and_adjust(var_id, var_level, &t) {
+                        return false;
+                    }
                 }
                 true
             }
@@ -1049,14 +1184,31 @@ impl TypeChecker {
         let mut seen = std::collections::HashSet::new();
         let mut seen_effects = std::collections::HashSet::new();
         let mut seen_names = std::collections::HashSet::new();
-        self.find_gen_vars(ty, &mut vars, &mut seen, &mut effect_vars, &mut seen_effects, &mut names, &mut seen_names);
-        Scheme { vars, effect_vars, names, bounds: vec![], ty: ty.clone(), param_names: vec![], requires: vec![], ensures: vec![] }
+        self.find_gen_vars(
+            ty,
+            &mut vars,
+            &mut seen,
+            &mut effect_vars,
+            &mut seen_effects,
+            &mut names,
+            &mut seen_names,
+        );
+        Scheme {
+            vars,
+            effect_vars,
+            names,
+            bounds: vec![],
+            ty: ty.clone(),
+            param_names: vec![],
+            requires: vec![],
+            ensures: vec![],
+        }
     }
 
     fn find_gen_vars(
-        &self, 
-        ty: &Type, 
-        vars: &mut Vec<usize>, 
+        &self,
+        ty: &Type,
+        vars: &mut Vec<usize>,
         seen: &mut std::collections::HashSet<usize>,
         effect_vars: &mut Vec<usize>,
         seen_effects: &mut std::collections::HashSet<usize>,
@@ -1078,23 +1230,70 @@ impl TypeChecker {
                     names.push(name.clone());
                 }
             }
-            Type::Function { params, ret, effects } => {
+            Type::Function {
+                params,
+                ret,
+                effects,
+            } => {
                 for p in params {
-                    self.find_gen_vars(&p, vars, seen, effect_vars, seen_effects, names, seen_names);
+                    self.find_gen_vars(
+                        &p,
+                        vars,
+                        seen,
+                        effect_vars,
+                        seen_effects,
+                        names,
+                        seen_names,
+                    );
                 }
-                self.find_gen_vars(&ret, vars, seen, effect_vars, seen_effects, names, seen_names);
+                self.find_gen_vars(
+                    &ret,
+                    vars,
+                    seen,
+                    effect_vars,
+                    seen_effects,
+                    names,
+                    seen_names,
+                );
                 self.find_gen_effect_vars(&effects, effect_vars, seen_effects);
             }
-            Type::Optional(inner) | Type::Cascade(inner) | Type::Pointer(inner, _, _) | Type::BuiltinWitness(_, inner) => {
-                self.find_gen_vars(&inner, vars, seen, effect_vars, seen_effects, names, seen_names);
+            Type::Optional(inner)
+            | Type::Cascade(inner)
+            | Type::Pointer(inner, _, _)
+            | Type::BuiltinWitness(_, inner) => {
+                self.find_gen_vars(
+                    &inner,
+                    vars,
+                    seen,
+                    effect_vars,
+                    seen_effects,
+                    names,
+                    seen_names,
+                );
             }
             Type::Static(fields) => {
                 for (_, t) in fields {
-                    self.find_gen_vars(&t, vars, seen, effect_vars, seen_effects, names, seen_names);
+                    self.find_gen_vars(
+                        &t,
+                        vars,
+                        seen,
+                        effect_vars,
+                        seen_effects,
+                        names,
+                        seen_names,
+                    );
                 }
             }
             Type::Assoc(base, _) => {
-                self.find_gen_vars(&base, vars, seen, effect_vars, seen_effects, names, seen_names);
+                self.find_gen_vars(
+                    &base,
+                    vars,
+                    seen,
+                    effect_vars,
+                    seen_effects,
+                    names,
+                    seen_names,
+                );
             }
             _ => {}
         }
@@ -1136,15 +1335,15 @@ impl TypeChecker {
         for name in &scheme.names {
             name_mapping.insert(name.clone(), self.new_var());
         }
-        
+
         let ty = self.substitute_scheme(&scheme.ty, &mapping, &effect_mapping, &name_mapping);
-        
+
         for (param, bound) in &scheme.bounds {
             if let Some(ty) = name_mapping.get(param) {
                 self.verify_bound(ty, bound);
             }
         }
-        
+
         ty
     }
 
@@ -1154,24 +1353,25 @@ impl TypeChecker {
             // Delay check
             return;
         }
-        
+
         if let Some(impls) = self.trait_impls.get(weave_name) {
             // Very simple check: see if any impl matches the pruned type
             for (impl_ty, _) in impls {
                 // We use a clone of self or a non-mutating check if possible
                 // For now, let's just do a simple check
-                if impl_ty == &ty { return; }
+                if impl_ty == &ty {
+                    return;
+                }
             }
         }
-        
     }
 
     fn substitute_scheme(
-        &self, 
-        ty: &Type, 
+        &self,
+        ty: &Type,
         mapping: &FxHashMap<usize, Type>,
         effect_mapping: &FxHashMap<usize, EffectSet>,
-        name_mapping: &FxHashMap<String, Type>
+        name_mapping: &FxHashMap<String, Type>,
     ) -> Type {
         match ty {
             Type::Var(id) => {
@@ -1188,17 +1388,49 @@ impl TypeChecker {
                     ty.clone()
                 }
             }
-            Type::Function { params, ret, effects } => Type::Function {
-                params: params.iter().map(|p| self.substitute_scheme(p, mapping, effect_mapping, name_mapping)).collect(),
+            Type::Function {
+                params,
+                ret,
+                effects,
+            } => Type::Function {
+                params: params
+                    .iter()
+                    .map(|p| self.substitute_scheme(p, mapping, effect_mapping, name_mapping))
+                    .collect(),
                 ret: Box::new(self.substitute_scheme(ret, mapping, effect_mapping, name_mapping)),
                 effects: self.substitute_effects(effects, effect_mapping),
             },
-            Type::Optional(inner) => Type::Optional(Box::new(self.substitute_scheme(inner, mapping, effect_mapping, name_mapping))),
-            Type::Cascade(inner) => Type::Cascade(Box::new(self.substitute_scheme(inner, mapping, effect_mapping, name_mapping))),
-            Type::Pointer(inner, m, l) => Type::Pointer(Box::new(self.substitute_scheme(inner, mapping, effect_mapping, name_mapping)), *m, l.clone()),
-            Type::BuiltinWitness(kind, inner) => Type::BuiltinWitness(*kind, Box::new(self.substitute_scheme(inner, mapping, effect_mapping, name_mapping))),
+            Type::Optional(inner) => Type::Optional(Box::new(self.substitute_scheme(
+                inner,
+                mapping,
+                effect_mapping,
+                name_mapping,
+            ))),
+            Type::Cascade(inner) => Type::Cascade(Box::new(self.substitute_scheme(
+                inner,
+                mapping,
+                effect_mapping,
+                name_mapping,
+            ))),
+            Type::Pointer(inner, m, l) => Type::Pointer(
+                Box::new(self.substitute_scheme(inner, mapping, effect_mapping, name_mapping)),
+                *m,
+                l.clone(),
+            ),
+            Type::BuiltinWitness(kind, inner) => Type::BuiltinWitness(
+                *kind,
+                Box::new(self.substitute_scheme(inner, mapping, effect_mapping, name_mapping)),
+            ),
             Type::Static(fields) => Type::Static(
-                fields.iter().map(|(n, t)| (n.clone(), self.substitute_scheme(t, mapping, effect_mapping, name_mapping))).collect()
+                fields
+                    .iter()
+                    .map(|(n, t)| {
+                        (
+                            n.clone(),
+                            self.substitute_scheme(t, mapping, effect_mapping, name_mapping),
+                        )
+                    })
+                    .collect(),
             ),
             Type::Assoc(base, name) => {
                 let new_base = self.substitute_scheme(base, mapping, effect_mapping, name_mapping);
@@ -1208,7 +1440,11 @@ impl TypeChecker {
         }
     }
 
-    fn substitute_effects(&self, effects: &EffectSet, mapping: &FxHashMap<usize, EffectSet>) -> EffectSet {
+    fn substitute_effects(
+        &self,
+        effects: &EffectSet,
+        mapping: &FxHashMap<usize, EffectSet>,
+    ) -> EffectSet {
         let effects = self.prune_effects(effects);
         match effects {
             EffectSet::Var(id) => {
@@ -1225,7 +1461,6 @@ impl TypeChecker {
         }
     }
 }
-
 
 impl TypeChecker {
     fn apply_lifetime_elision(&mut self, params: &mut [Type], ret: &mut Type) {
@@ -1251,9 +1486,13 @@ impl TypeChecker {
             Type::Pointer(_, _, l) => {
                 lifetimes.push(l.clone());
             }
-            Type::Optional(inner) | Type::Cascade(inner) | Type::BuiltinWitness(_, inner) => self.collect_lifetimes(&inner, lifetimes),
+            Type::Optional(inner) | Type::Cascade(inner) | Type::BuiltinWitness(_, inner) => {
+                self.collect_lifetimes(&inner, lifetimes)
+            }
             Type::Function { params, ret, .. } => {
-                for p in params { self.collect_lifetimes(&p, lifetimes); }
+                for p in params {
+                    self.collect_lifetimes(&p, lifetimes);
+                }
                 self.collect_lifetimes(&ret, lifetimes);
             }
             _ => {}
@@ -1264,7 +1503,7 @@ impl TypeChecker {
         // We need to mutate the actual type, but match on its pruned form.
         // This is tricky because self.prune returns a copy.
         // Let's implement pruning-aware mutation carefully.
-        
+
         match ty {
             Type::Var(id) => {
                 let id = *id;
@@ -1297,8 +1536,8 @@ impl TypeChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use izel_lexer::{Lexer, TokenKind, Token};
     use crate::type_system::Effect;
+    use izel_lexer::{Lexer, Token, TokenKind};
 
     fn tokenize(source: &str) -> Vec<Token> {
         let mut lexer = Lexer::new(source, izel_span::SourceId(0));
@@ -1320,7 +1559,7 @@ mod tests {
         let e1 = EffectSet::Concrete(vec![Effect::IO]);
         let e2 = EffectSet::Concrete(vec![Effect::IO]);
         assert!(tc.unify_effects(&e1, &e2));
-        
+
         let e3 = EffectSet::Concrete(vec![Effect::Alloc]);
         assert!(!tc.unify_effects(&e1, &e3));
     }
@@ -1330,7 +1569,7 @@ mod tests {
         let mut tc = TypeChecker::new();
         let ev1 = tc.new_effect_var();
         let e1 = EffectSet::Concrete(vec![Effect::Mut]);
-        
+
         assert!(tc.unify_effects(&ev1, &e1));
         let pruned = tc.prune_effects(&ev1);
         assert_eq!(pruned, e1);
@@ -1342,7 +1581,7 @@ mod tests {
         let tail = tc.new_effect_var();
         let row = EffectSet::Row(vec![Effect::IO], Box::new(tail.clone()));
         let concrete = EffectSet::Concrete(vec![Effect::IO, Effect::Alloc]);
-        
+
         assert!(tc.unify_effects(&row, &concrete));
         let pruned_tail = tc.prune_effects(&tail);
         assert_eq!(pruned_tail, EffectSet::Concrete(vec![Effect::Alloc]));
@@ -1356,7 +1595,7 @@ mod tests {
         let cst = parser.parse_decl();
         let lowerer = izel_ast_lower::Lowerer::new(source);
         let item = lowerer.lower_item(&cst).unwrap();
-        
+
         if let ast::Item::Forge(f) = item {
             assert!(f.attributes.iter().any(|a| a.name == "proof"));
             if let ast::Type::Witness(_) = f.ret_type {
@@ -1372,26 +1611,32 @@ mod tests {
     #[test]
     fn test_witness_construction_rules() {
         let mut checker = TypeChecker::new();
-        
+
         // 1. Fail: Witness construction in normal function without raw
         checker.current_attributes = vec![];
         checker.in_raw_block = false;
-        
+
         let _witness_ty = Type::Witness(Box::new(Type::Prim(PrimType::I32)));
-        
+
         let is_proof = checker.current_attributes.iter().any(|a| a.name == "proof");
         assert!(!is_proof);
         assert!(!checker.in_raw_block);
-        
+
         // 2. Success: @proof function
-        checker.current_attributes = vec![ast::Attribute { name: "proof".to_string(), args: vec![], span: izel_span::Span::dummy() }];
+        checker.current_attributes = vec![ast::Attribute {
+            name: "proof".to_string(),
+            args: vec![],
+            span: izel_span::Span::dummy(),
+        }];
         let is_proof = checker.current_attributes.iter().any(|a| a.name == "proof");
         assert!(is_proof || checker.in_raw_block);
-        
+
         // 3. Success: raw block
         checker.current_attributes = vec![];
         checker.in_raw_block = true;
-        assert!(checker.current_attributes.iter().any(|a| a.name == "proof") || checker.in_raw_block);
+        assert!(
+            checker.current_attributes.iter().any(|a| a.name == "proof") || checker.in_raw_block
+        );
     }
 
     // ========== Built-in Witness Types Tests ==========
@@ -1399,22 +1644,40 @@ mod tests {
     #[test]
     fn test_builtin_witness_nonzero_type() {
         let mut tc = TypeChecker::new();
-        let nz1 = Type::BuiltinWitness(BuiltinWitness::NonZero, Box::new(Type::Prim(PrimType::I32)));
-        let nz2 = Type::BuiltinWitness(BuiltinWitness::NonZero, Box::new(Type::Prim(PrimType::I32)));
-        assert!(tc.unify(&nz1, &nz2), "NonZero<i32> should unify with NonZero<i32>");
+        let nz1 =
+            Type::BuiltinWitness(BuiltinWitness::NonZero, Box::new(Type::Prim(PrimType::I32)));
+        let nz2 =
+            Type::BuiltinWitness(BuiltinWitness::NonZero, Box::new(Type::Prim(PrimType::I32)));
+        assert!(
+            tc.unify(&nz1, &nz2),
+            "NonZero<i32> should unify with NonZero<i32>"
+        );
 
         // Different inner types should not unify
-        let nz3 = Type::BuiltinWitness(BuiltinWitness::NonZero, Box::new(Type::Prim(PrimType::I64)));
+        let nz3 =
+            Type::BuiltinWitness(BuiltinWitness::NonZero, Box::new(Type::Prim(PrimType::I64)));
         let mut tc2 = TypeChecker::new();
-        assert!(!tc2.unify(&nz1, &nz3), "NonZero<i32> should not unify with NonZero<i64>");
+        assert!(
+            !tc2.unify(&nz1, &nz3),
+            "NonZero<i32> should not unify with NonZero<i64>"
+        );
     }
 
     #[test]
     fn test_builtin_witness_inbounds_type() {
         let mut tc = TypeChecker::new();
-        let ib1 = Type::BuiltinWitness(BuiltinWitness::InBounds, Box::new(Type::Prim(PrimType::U64)));
-        let ib2 = Type::BuiltinWitness(BuiltinWitness::InBounds, Box::new(Type::Prim(PrimType::U64)));
-        assert!(tc.unify(&ib1, &ib2), "InBounds<u64> should unify with InBounds<u64>");
+        let ib1 = Type::BuiltinWitness(
+            BuiltinWitness::InBounds,
+            Box::new(Type::Prim(PrimType::U64)),
+        );
+        let ib2 = Type::BuiltinWitness(
+            BuiltinWitness::InBounds,
+            Box::new(Type::Prim(PrimType::U64)),
+        );
+        assert!(
+            tc.unify(&ib1, &ib2),
+            "InBounds<u64> should unify with InBounds<u64>"
+        );
     }
 
     #[test]
@@ -1422,7 +1685,10 @@ mod tests {
         let mut tc = TypeChecker::new();
         let s1 = Type::BuiltinWitness(BuiltinWitness::Sorted, Box::new(Type::Prim(PrimType::I32)));
         let s2 = Type::BuiltinWitness(BuiltinWitness::Sorted, Box::new(Type::Prim(PrimType::I32)));
-        assert!(tc.unify(&s1, &s2), "Sorted<i32> should unify with Sorted<i32>");
+        assert!(
+            tc.unify(&s1, &s2),
+            "Sorted<i32> should unify with Sorted<i32>"
+        );
     }
 
     #[test]
@@ -1436,19 +1702,34 @@ mod tests {
         let plain = Type::Prim(PrimType::I32);
 
         // BuiltinWitness(NonZero, i32) as lhs, plain i32 as rhs => should fail (construction)
-        assert!(!tc.unify(&nz, &plain), "Should not construct NonZero<i32> from i32 outside proof mode");
+        assert!(
+            !tc.unify(&nz, &plain),
+            "Should not construct NonZero<i32> from i32 outside proof mode"
+        );
 
         // In proof mode, construction should be allowed
         let mut tc2 = TypeChecker::new();
-        tc2.current_attributes = vec![ast::Attribute { name: "proof".to_string(), args: vec![], span: izel_span::Span::dummy() }];
-        let nz2 = Type::BuiltinWitness(BuiltinWitness::NonZero, Box::new(Type::Prim(PrimType::I32)));
-        assert!(tc2.unify(&nz2, &plain), "Should construct NonZero<i32> from i32 in proof mode");
+        tc2.current_attributes = vec![ast::Attribute {
+            name: "proof".to_string(),
+            args: vec![],
+            span: izel_span::Span::dummy(),
+        }];
+        let nz2 =
+            Type::BuiltinWitness(BuiltinWitness::NonZero, Box::new(Type::Prim(PrimType::I32)));
+        assert!(
+            tc2.unify(&nz2, &plain),
+            "Should construct NonZero<i32> from i32 in proof mode"
+        );
 
         // In raw block, construction should also be allowed
         let mut tc3 = TypeChecker::new();
         tc3.in_raw_block = true;
-        let nz3 = Type::BuiltinWitness(BuiltinWitness::NonZero, Box::new(Type::Prim(PrimType::I32)));
-        assert!(tc3.unify(&nz3, &plain), "Should construct NonZero<i32> from i32 in raw block");
+        let nz3 =
+            Type::BuiltinWitness(BuiltinWitness::NonZero, Box::new(Type::Prim(PrimType::I32)));
+        assert!(
+            tc3.unify(&nz3, &plain),
+            "Should construct NonZero<i32> from i32 in raw block"
+        );
     }
 
     #[test]
@@ -1462,29 +1743,52 @@ mod tests {
         let plain = Type::Prim(PrimType::I32);
 
         // plain i32 as lhs, BuiltinWitness as rhs => extraction, always allowed
-        assert!(tc.unify(&plain, &nz), "Should extract i32 from NonZero<i32> outside proof mode");
+        assert!(
+            tc.unify(&plain, &nz),
+            "Should extract i32 from NonZero<i32> outside proof mode"
+        );
 
         let mut tc2 = TypeChecker::new();
-        let ib = Type::BuiltinWitness(BuiltinWitness::InBounds, Box::new(Type::Prim(PrimType::U64)));
+        let ib = Type::BuiltinWitness(
+            BuiltinWitness::InBounds,
+            Box::new(Type::Prim(PrimType::U64)),
+        );
         let plain_u64 = Type::Prim(PrimType::U64);
-        assert!(tc2.unify(&plain_u64, &ib), "Should extract u64 from InBounds<u64>");
+        assert!(
+            tc2.unify(&plain_u64, &ib),
+            "Should extract u64 from InBounds<u64>"
+        );
 
         let mut tc3 = TypeChecker::new();
-        let sorted = Type::BuiltinWitness(BuiltinWitness::Sorted, Box::new(Type::Prim(PrimType::I32)));
+        let sorted =
+            Type::BuiltinWitness(BuiltinWitness::Sorted, Box::new(Type::Prim(PrimType::I32)));
         let plain_i32 = Type::Prim(PrimType::I32);
-        assert!(tc3.unify(&plain_i32, &sorted), "Should extract i32 from Sorted<i32>");
+        assert!(
+            tc3.unify(&plain_i32, &sorted),
+            "Should extract i32 from Sorted<i32>"
+        );
     }
 
     #[test]
     fn test_builtin_witness_unify_different_kinds() {
         let mut tc = TypeChecker::new();
         let nz = Type::BuiltinWitness(BuiltinWitness::NonZero, Box::new(Type::Prim(PrimType::I32)));
-        let ib = Type::BuiltinWitness(BuiltinWitness::InBounds, Box::new(Type::Prim(PrimType::I32)));
-        assert!(!tc.unify(&nz, &ib), "NonZero<i32> should NOT unify with InBounds<i32>");
+        let ib = Type::BuiltinWitness(
+            BuiltinWitness::InBounds,
+            Box::new(Type::Prim(PrimType::I32)),
+        );
+        assert!(
+            !tc.unify(&nz, &ib),
+            "NonZero<i32> should NOT unify with InBounds<i32>"
+        );
 
         let mut tc2 = TypeChecker::new();
-        let sorted = Type::BuiltinWitness(BuiltinWitness::Sorted, Box::new(Type::Prim(PrimType::I32)));
-        assert!(!tc2.unify(&nz, &sorted), "NonZero<i32> should NOT unify with Sorted<i32>");
+        let sorted =
+            Type::BuiltinWitness(BuiltinWitness::Sorted, Box::new(Type::Prim(PrimType::I32)));
+        assert!(
+            !tc2.unify(&nz, &sorted),
+            "NonZero<i32> should NOT unify with Sorted<i32>"
+        );
     }
 
     #[test]
@@ -1504,13 +1808,17 @@ mod tests {
             // First param should be i32
             assert!(matches!(f.params[0].ty, ast::Type::Prim(ref s) if s == "i32"));
 
-            // Second param: the AST layer keeps it as a Path("NonZero", [i32]) 
+            // Second param: the AST layer keeps it as a Path("NonZero", [i32])
             // The typeck layer resolves NonZero<i32> to BuiltinWitness
             let mut tc = TypeChecker::new();
             let lowered = tc.lower_ast_type(&f.params[1].ty);
             match lowered {
                 Type::BuiltinWitness(BuiltinWitness::NonZero, inner) => {
-                    assert_eq!(*inner, Type::Prim(PrimType::I32), "Inner type should be i32");
+                    assert_eq!(
+                        *inner,
+                        Type::Prim(PrimType::I32),
+                        "Inner type should be i32"
+                    );
                 }
                 other => panic!("Expected BuiltinWitness(NonZero, i32), got {:?}", other),
             }
@@ -1570,7 +1878,10 @@ mod tests {
             "test_fn",
             &[ast::Expr::Binary(
                 ast::BinaryOp::Gt,
-                Box::new(ast::Expr::Ident("result".to_string(), izel_span::Span::dummy())),
+                Box::new(ast::Expr::Ident(
+                    "result".to_string(),
+                    izel_span::Span::dummy(),
+                )),
                 Box::new(ast::Expr::Literal(ast::Literal::Int(0))),
             )],
             &TypckConstValue::Int(0), // result = 0 violates result > 0
@@ -1593,13 +1904,42 @@ mod tests {
 
         if let Some(ast::Item::Shape(s)) = item {
             assert_eq!(s.name, "Rect");
-            assert!(!s.invariants.is_empty(), "Shape should have invariants extracted from @invariant");
+            assert!(
+                !s.invariants.is_empty(),
+                "Shape should have invariants extracted from @invariant"
+            );
             // The invariant attribute should not appear in regular attributes
-            assert!(s.attributes.iter().all(|a| a.name != "invariant"), 
-                "invariant should be extracted from attributes");
+            assert!(
+                s.attributes.iter().all(|a| a.name != "invariant"),
+                "invariant should be extracted from attributes"
+            );
         } else {
             panic!("Expected Shape item");
         }
     }
 
+    #[test]
+    fn test_zone_allocator_type() {
+        let mut checker = TypeChecker::new();
+        // Simulate checking `zone temp { temp }`
+        let body = ast::Block {
+            stmts: vec![],
+            expr: Some(Box::new(ast::Expr::Ident(
+                "temp".to_string(),
+                izel_span::Span::dummy(),
+            ))),
+            span: izel_span::Span::dummy(),
+        };
+        let zone_expr = ast::Expr::Zone {
+            name: "temp".to_string(),
+            body,
+        };
+
+        let ty = checker.infer_expr(&zone_expr);
+        let pruned_ty = checker.prune(&ty);
+        assert_eq!(pruned_ty, Type::Prim(type_system::PrimType::ZoneAllocator));
+
+        // After exiting the zone, 'temp' should not be resolvable
+        assert_eq!(checker.resolve_name("temp"), None);
+    }
 }

@@ -1,12 +1,12 @@
 //! LLVM code generation for Izel.
 
+use anyhow::{anyhow, Result};
+use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
-use inkwell::builder::Builder;
 use inkwell::values::FunctionValue;
-use izel_parser::cst::{SyntaxNode, SyntaxElement, NodeKind};
 use izel_lexer::TokenKind;
-use anyhow::{Result, anyhow};
+use izel_parser::cst::{NodeKind, SyntaxElement, SyntaxNode};
 
 pub struct Codegen<'ctx, 'a> {
     pub context: &'ctx Context,
@@ -19,7 +19,12 @@ impl<'ctx, 'a> Codegen<'ctx, 'a> {
     pub fn new(context: &'ctx Context, name: &str, source: &'a str) -> Self {
         let module = context.create_module(name);
         let builder = context.create_builder();
-        Self { context, module, builder, source }
+        Self {
+            context,
+            module,
+            builder,
+            source,
+        }
     }
 
     pub fn gen_source_file(&mut self, node: &SyntaxNode) -> Result<()> {
@@ -43,7 +48,7 @@ impl<'ctx, 'a> Codegen<'ctx, 'a> {
 
     fn gen_forge_decl(&mut self, node: &SyntaxNode) -> Result<FunctionValue<'ctx>> {
         let mut name = None;
-        
+
         for child in &node.children {
             if let SyntaxElement::Token(token) = child {
                 if token.kind == TokenKind::Ident {
@@ -53,7 +58,7 @@ impl<'ctx, 'a> Codegen<'ctx, 'a> {
                 }
             }
         }
-        
+
         let name = name.ok_or_else(|| anyhow!("Forge declaration missing name"))?;
 
         let i32_type = self.context.i32_type();
@@ -63,7 +68,8 @@ impl<'ctx, 'a> Codegen<'ctx, 'a> {
         self.builder.position_at_end(basic_block);
 
         // Minimal body: return 0
-        self.builder.build_return(Some(&i32_type.const_int(0, false)))?;
+        self.builder
+            .build_return(Some(&i32_type.const_int(0, false)))?;
 
         Ok(function)
     }
@@ -73,18 +79,21 @@ impl<'ctx, 'a> Codegen<'ctx, 'a> {
     }
 
     pub fn run_jit(&self) -> Result<i32> {
-        let execution_engine = self.module.create_jit_execution_engine(inkwell::OptimizationLevel::None)
+        let execution_engine = self
+            .module
+            .create_jit_execution_engine(inkwell::OptimizationLevel::None)
             .map_err(|e| anyhow!("Failed to create JIT: {:?}", e))?;
-        
+
         unsafe {
-            let main_fn = execution_engine.get_function::<unsafe extern "C" fn() -> i32>("main")
+            let main_fn = execution_engine
+                .get_function::<unsafe extern "C" fn() -> i32>("main")
                 .map_err(|e| anyhow!("Failed to find main function in JIT: {:?}", e))?;
-            
+
             println!("--- JIT Execution ---");
             let result = main_fn.call();
             println!("JIT Exit Code: {}", result);
             println!("----------------------\n");
-            
+
             Ok(result)
         }
     }

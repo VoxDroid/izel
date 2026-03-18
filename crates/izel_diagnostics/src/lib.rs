@@ -1,7 +1,7 @@
 //! Types and utilities for high-fidelity error reporting.
 
-pub use codespan_reporting::diagnostic::{Severity, LabelStyle};
 use codespan_reporting::diagnostic::{Diagnostic as CsDiagnostic, Label as CsLabel};
+pub use codespan_reporting::diagnostic::{LabelStyle, Severity};
 use izel_span::Span;
 
 pub type Diagnostic = CsDiagnostic<izel_span::SourceId>;
@@ -30,5 +30,6 @@ pub fn emit(source_map: &izel_span::SourceMap, diagnostic: &Diagnostic) {
     let writer = StandardStream::stderr(ColorChoice::Auto);
     let config = term::Config::default();
 
-    term::emit(&mut writer.lock(), &config, source_map, diagnostic).expect("failed to emit diagnostic");
+    term::emit(&mut writer.lock(), &config, source_map, diagnostic)
+        .expect("failed to emit diagnostic");
 }

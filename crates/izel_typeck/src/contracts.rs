@@ -1,6 +1,6 @@
-use izel_parser::eval::{eval_expr, ConstValue};
+use izel_diagnostics::{primary_label, Diagnostic};
 use izel_parser::ast::Expr;
-use izel_diagnostics::{Diagnostic, primary_label};
+use izel_parser::eval::{eval_expr, ConstValue};
 use izel_span::Span;
 use std::collections::HashMap;
 
@@ -25,10 +25,12 @@ impl ContractChecker {
         for (i, req) in requires.iter().enumerate() {
             let res = eval_expr(req, &context);
             if let ConstValue::Bool(false) = res {
-                diagnostics.push(Diagnostic::error()
-                    .with_message(format!("precondition violation for '{}'", name))
-                    .with_code(format!("E-REQ-{}", i))
-                    .with_labels(vec![primary_label(call_span, "requires condition not met")]));
+                diagnostics.push(
+                    Diagnostic::error()
+                        .with_message(format!("precondition violation for '{}'", name))
+                        .with_code(format!("E-REQ-{}", i))
+                        .with_labels(vec![primary_label(call_span, "requires condition not met")]),
+                );
             }
         }
         diagnostics
@@ -49,10 +51,12 @@ impl ContractChecker {
         for (i, ens) in ensures.iter().enumerate() {
             let res = eval_expr(ens, &context);
             if let ConstValue::Bool(false) = res {
-                diagnostics.push(Diagnostic::error()
-                    .with_message(format!("postcondition violation for '{}'", name))
-                    .with_code(format!("E-ENS-{}", i))
-                    .with_labels(vec![primary_label(ret_span, "ensures condition not met")]));
+                diagnostics.push(
+                    Diagnostic::error()
+                        .with_message(format!("postcondition violation for '{}'", name))
+                        .with_code(format!("E-ENS-{}", i))
+                        .with_labels(vec![primary_label(ret_span, "ensures condition not met")]),
+                );
             }
         }
         diagnostics

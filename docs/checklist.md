@@ -163,12 +163,12 @@ This document provides a granular, step-by-step roadmap for building the Izel co
     - [x] Implement `#[invariant]` checking for `shape` state.
 
 ### 3.3 Memory Zones
-- [ ] **Allocators**:
-    - [ ] Implement `ZoneAllocator` (Arena style).
-- [ ] **Escape Analysis**:
-    - [ ] Verify zone-allocated data never outlives the `zone` block.
-- [ ] **Codegen**:
-    - [ ] Emit bulk deallocation at the end of `zone` blocks.
+- [x] **Allocators**:
+    - [x] Implement `ZoneAllocator` (Arena style).
+- [x] **Escape Analysis**:
+    - [x] Verify zone-allocated data never outlives the `zone` block.
+- [x] **Codegen**:
+    - [x] Emit bulk deallocation at the end of `zone` blocks.
 
 ### 3.4 Cascade Error System
 - [ ] **Error Context**:

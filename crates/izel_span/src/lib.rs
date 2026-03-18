@@ -47,7 +47,11 @@ pub struct SourceFile {
 impl SourceFile {
     pub fn new(name: String, source: String) -> Self {
         let line_starts = codespan_reporting::files::line_starts(&source).collect();
-        Self { name, source, line_starts }
+        Self {
+            name,
+            source,
+            line_starts,
+        }
     }
 }
 
@@ -78,29 +82,57 @@ impl<'a> codespan_reporting::files::Files<'a> for SourceMap {
     type Source = &'a str;
 
     fn name(&'a self, id: Self::FileId) -> Result<Self::Name, codespan_reporting::files::Error> {
-        self.files.get(id.0 as usize)
+        self.files
+            .get(id.0 as usize)
             .map(|f| f.name.as_str())
             .ok_or(codespan_reporting::files::Error::FileMissing)
     }
 
-    fn source(&'a self, id: Self::FileId) -> Result<Self::Source, codespan_reporting::files::Error> {
-        self.files.get(id.0 as usize)
+    fn source(
+        &'a self,
+        id: Self::FileId,
+    ) -> Result<Self::Source, codespan_reporting::files::Error> {
+        self.files
+            .get(id.0 as usize)
             .map(|f| f.source.as_str())
             .ok_or(codespan_reporting::files::Error::FileMissing)
     }
 
-    fn line_index(&'a self, id: Self::FileId, byte_index: usize) -> Result<usize, codespan_reporting::files::Error> {
-        let file = self.files.get(id.0 as usize).ok_or(codespan_reporting::files::Error::FileMissing)?;
-        Ok(file.line_starts.binary_search(&byte_index).unwrap_or_else(|x| x - 1))
+    fn line_index(
+        &'a self,
+        id: Self::FileId,
+        byte_index: usize,
+    ) -> Result<usize, codespan_reporting::files::Error> {
+        let file = self
+            .files
+            .get(id.0 as usize)
+            .ok_or(codespan_reporting::files::Error::FileMissing)?;
+        Ok(file
+            .line_starts
+            .binary_search(&byte_index)
+            .unwrap_or_else(|x| x - 1))
     }
 
-    fn line_range(&'a self, id: Self::FileId, line_index: usize) -> Result<std::ops::Range<usize>, codespan_reporting::files::Error> {
-        let file = self.files.get(id.0 as usize).ok_or(codespan_reporting::files::Error::FileMissing)?;
-        let start = *file.line_starts.get(line_index).ok_or(codespan_reporting::files::Error::LineTooLarge { 
-            given: line_index,
-            max: file.line_starts.len(),
-        })?;
-        let end = file.line_starts.get(line_index + 1).cloned().unwrap_or(file.source.len());
+    fn line_range(
+        &'a self,
+        id: Self::FileId,
+        line_index: usize,
+    ) -> Result<std::ops::Range<usize>, codespan_reporting::files::Error> {
+        let file = self
+            .files
+            .get(id.0 as usize)
+            .ok_or(codespan_reporting::files::Error::FileMissing)?;
+        let start = *file.line_starts.get(line_index).ok_or(
+            codespan_reporting::files::Error::LineTooLarge {
+                given: line_index,
+                max: file.line_starts.len(),
+            },
+        )?;
+        let end = file
+            .line_starts
+            .get(line_index + 1)
+            .cloned()
+            .unwrap_or(file.source.len());
         Ok(start..end)
     }
 }

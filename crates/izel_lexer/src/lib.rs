@@ -70,48 +70,48 @@ pub enum TokenKind {
     Byte { terminated: bool },
 
     // Sigils/Punctuation
-    Tilde,          // ~
-    Bang,           // !
-    At,             // @
-    Pipe,           // |>
-    Bar,            // |
-    DoubleColon,    // ::
-    Arrow,          // ->
-    FatArrow,       // =>
-    DotDot,         // ..
-    DotDotEq,       // ..=
-    Dot,            // .
-    Question,       // ?
+    Tilde,            // ~
+    Bang,             // !
+    At,               // @
+    Pipe,             // |>
+    Bar,              // |
+    DoubleColon,      // ::
+    Arrow,            // ->
+    FatArrow,         // =>
+    DotDot,           // ..
+    DotDotEq,         // ..=
+    Dot,              // .
+    Question,         // ?
     QuestionQuestion, // ??
-    Pound,          // #
-    Equal,          // =
-    Plus,           // +
-    Minus,          // -
-    Star,           // *
-    Slash,          // /
-    Percent,        // %
-    Caret,          // ^
-    Ampersand,      // &
-    AmpersandTilde, // &~
-    Lt,             // <
-    Gt,             // >
-    Le,             // <=
-    Ge,             // >=
-    EqEq,           // ==
-    NotEq,          // !=
-    OrOr,           // or (already keyword)
-    AndAnd,         // and (already keyword)
-    
+    Pound,            // #
+    Equal,            // =
+    Plus,             // +
+    Minus,            // -
+    Star,             // *
+    Slash,            // /
+    Percent,          // %
+    Caret,            // ^
+    Ampersand,        // &
+    AmpersandTilde,   // &~
+    Lt,               // <
+    Gt,               // >
+    Le,               // <=
+    Ge,               // >=
+    EqEq,             // ==
+    NotEq,            // !=
+    OrOr,             // or (already keyword)
+    AndAnd,           // and (already keyword)
+
     // Delimiters
-    OpenParen,      // (
-    CloseParen,     // )
-    OpenBrace,      // {
-    CloseBrace,     // }
-    OpenBracket,    // [
-    CloseBracket,   // ]
-    Comma,          // ,
-    Semicolon,      // ;
-    Colon,          // :
+    OpenParen,    // (
+    CloseParen,   // )
+    OpenBrace,    // {
+    CloseBrace,   // }
+    OpenBracket,  // [
+    CloseBracket, // ]
+    Comma,        // ,
+    Semicolon,    // ;
+    Colon,        // :
 
     // Special
     Whitespace,
@@ -171,15 +171,27 @@ mod tests {
     #[test]
     fn test_strings() {
         assert_eq!(lex("\"hello\""), vec![TokenKind::Str { terminated: true }]);
-        assert_eq!(lex("\"hello\\nworld\""), vec![TokenKind::Str { terminated: true }]);
-        assert_eq!(lex("\"\\u{1F600}\""), vec![TokenKind::Str { terminated: true }]);
-        assert_eq!(lex("\"unterminated"), vec![TokenKind::Str { terminated: false }]);
+        assert_eq!(
+            lex("\"hello\\nworld\""),
+            vec![TokenKind::Str { terminated: true }]
+        );
+        assert_eq!(
+            lex("\"\\u{1F600}\""),
+            vec![TokenKind::Str { terminated: true }]
+        );
+        assert_eq!(
+            lex("\"unterminated"),
+            vec![TokenKind::Str { terminated: false }]
+        );
     }
 
     #[test]
     fn test_chars() {
         assert_eq!(lex("'a'"), vec![TokenKind::Char { terminated: true }]);
         assert_eq!(lex("'\\n'"), vec![TokenKind::Char { terminated: true }]);
-        assert_eq!(lex("'\\u{1F600}'"), vec![TokenKind::Char { terminated: true }]);
+        assert_eq!(
+            lex("'\\u{1F600}'"),
+            vec![TokenKind::Char { terminated: true }]
+        );
     }
 }

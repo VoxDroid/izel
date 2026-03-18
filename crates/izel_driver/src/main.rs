@@ -1,6 +1,6 @@
+use anyhow::Result;
 use clap::Parser;
 use izel_session::{Session, SessionOptions};
-use anyhow::Result;
 
 fn main() -> Result<()> {
     let options = SessionOptions::parse();
@@ -28,11 +28,11 @@ fn main() -> Result<()> {
     println!("Parsing CST...");
     let mut parser = izel_parser::Parser::new(tokens);
     let cst = parser.parse_source_file();
-    
+
     println!("Resolving symbols...");
     let mut resolver = izel_resolve::Resolver::new();
     resolver.resolve_source_file(&cst, &source);
-    
+
     println!("Desugaring AST...");
     let ast_lowerer = izel_ast_lower::Lowerer::new(&source);
     let _ast = ast_lowerer.lower_module(&cst);
@@ -45,7 +45,7 @@ fn main() -> Result<()> {
     let mut mir_lowerer = izel_mir::lower::MirLowerer::new();
     mir_lowerer.check_contracts = session.options.check_contracts;
     let mut borrow_checker = izel_borrow::BorrowChecker::new();
-    
+
     for item in &_ast.items {
         if let izel_parser::ast::Item::Forge(f) = item {
             let mir = mir_lowerer.lower_forge(f);
@@ -68,7 +68,7 @@ fn main() -> Result<()> {
     if session.options.run {
         codegen.run_jit()?;
     }
-    
+
     Ok(())
 }
 

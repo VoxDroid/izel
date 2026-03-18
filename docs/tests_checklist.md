@@ -15,8 +15,8 @@ This document lists specific test cases and edge cases required to verify the co
     - [ ] Nested quotes in raw strings `r#" "quotes" "#`.
     - [ ] Multi-line interpolation ``` `sum: {x + \n y}` ```.
     - [ ] Invalid Unicode escape `\u{XYZZY}`.
-- [x] **Comments**:
-    - [x] Nested multi-line comments `/~ /~ nested ~/ ~/`.
+- [ ] **Comments**:
+    - [ ] Nested multi-line comments `/~ /~ nested ~/ ~/`.
     - [ ] Doc comments `///` and `//!` at EOF.
 
 ### 1.2 Parser Assertions

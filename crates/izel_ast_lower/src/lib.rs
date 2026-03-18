@@ -1,6 +1,6 @@
-use izel_parser::cst::{SyntaxNode, SyntaxElement, NodeKind};
-use izel_parser::ast;
 use izel_lexer::TokenKind;
+use izel_parser::ast;
+use izel_parser::cst::{NodeKind, SyntaxElement, SyntaxNode};
 use izel_span::Span;
 
 pub struct Lowerer<'a> {
@@ -54,7 +54,8 @@ impl<'a> Lowerer<'a> {
                     attributes = self.lower_attributes(n);
                 }
                 SyntaxElement::Token(token) if self.is_naming_ident(token.kind) => {
-                    name = self.source[token.span.lo.0 as usize..token.span.hi.0 as usize].to_string();
+                    name =
+                        self.source[token.span.lo.0 as usize..token.span.hi.0 as usize].to_string();
                 }
                 SyntaxElement::Node(n) if n.kind == NodeKind::GenericParams => {
                     generic_params = self.lower_generic_params(n);
@@ -71,7 +72,13 @@ impl<'a> Lowerer<'a> {
                 }
                 SyntaxElement::Node(n) => {
                     // Could be the return type if it's not a block/params/effect/generic
-                    if !matches!(n.kind, NodeKind::ParamPart | NodeKind::Block | NodeKind::GenericParams | NodeKind::Effect) {
+                    if !matches!(
+                        n.kind,
+                        NodeKind::ParamPart
+                            | NodeKind::Block
+                            | NodeKind::GenericParams
+                            | NodeKind::Effect
+                    ) {
                         ret_type = self.lower_type(n);
                     }
                 }
@@ -116,7 +123,8 @@ impl<'a> Lowerer<'a> {
                     attributes = self.lower_attributes(n);
                 }
                 SyntaxElement::Token(token) if self.is_naming_ident(token.kind) => {
-                    name = self.source[token.span.lo.0 as usize..token.span.hi.0 as usize].to_string();
+                    name =
+                        self.source[token.span.lo.0 as usize..token.span.hi.0 as usize].to_string();
                 }
                 SyntaxElement::Node(n) if n.kind == NodeKind::GenericParams => {
                     generic_params = self.lower_generic_params(n);
@@ -155,7 +163,8 @@ impl<'a> Lowerer<'a> {
         for child in &node.children {
             match child {
                 SyntaxElement::Token(token) if self.is_naming_ident(token.kind) => {
-                    name = self.source[token.span.lo.0 as usize..token.span.hi.0 as usize].to_string();
+                    name =
+                        self.source[token.span.lo.0 as usize..token.span.hi.0 as usize].to_string();
                 }
                 SyntaxElement::Node(n) => {
                     ty = self.lower_type(n);
@@ -164,7 +173,11 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        ast::Field { name, ty, span: node.span() }
+        ast::Field {
+            name,
+            ty,
+            span: node.span(),
+        }
     }
 
     fn lower_generic_params(&self, node: &SyntaxNode) -> Vec<ast::GenericParam> {
@@ -183,15 +196,18 @@ impl<'a> Lowerer<'a> {
         let mut name = String::new();
         let mut bounds = Vec::new();
         let mut in_bounds = false;
-        
+
         for child in &node.children {
             if let SyntaxElement::Token(t) = child {
                 match t.kind {
                     TokenKind::Ident => {
                         if in_bounds {
-                            bounds.push(self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string());
+                            bounds.push(
+                                self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string(),
+                            );
                         } else {
-                            name = self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
+                            name =
+                                self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
                         }
                     }
                     TokenKind::Colon => {
@@ -201,7 +217,7 @@ impl<'a> Lowerer<'a> {
                 }
             }
         }
-        
+
         ast::GenericParam {
             name,
             bounds,
@@ -216,7 +232,8 @@ impl<'a> Lowerer<'a> {
         for child in &node.children {
             match child {
                 SyntaxElement::Token(token) if self.is_naming_ident(token.kind) => {
-                    name = self.source[token.span.lo.0 as usize..token.span.hi.0 as usize].to_string();
+                    name =
+                        self.source[token.span.lo.0 as usize..token.span.hi.0 as usize].to_string();
                 }
                 SyntaxElement::Node(n) => {
                     ty = self.lower_type(n);
@@ -224,7 +241,11 @@ impl<'a> Lowerer<'a> {
                 _ => {}
             }
         }
-        ast::Param { name, ty, span: node.span() }
+        ast::Param {
+            name,
+            ty,
+            span: node.span(),
+        }
     }
 
     fn lower_block(&self, node: &SyntaxNode) -> ast::Block {
@@ -234,14 +255,18 @@ impl<'a> Lowerer<'a> {
         for (i, child) in node.children.iter().enumerate() {
             if let SyntaxElement::Node(n) = child {
                 if i == node.children.len() - 1 && n.kind != NodeKind::LetStmt {
-                     // Last node might be a trailing expression if it's not a let
-                     last_expr = Some(Box::new(self.lower_expr(n)));
+                    // Last node might be a trailing expression if it's not a let
+                    last_expr = Some(Box::new(self.lower_expr(n)));
                 } else {
-                     stmts.push(self.lower_stmt(n));
+                    stmts.push(self.lower_stmt(n));
                 }
             }
         }
-        ast::Block { stmts, expr: last_expr, span: node.span() }
+        ast::Block {
+            stmts,
+            expr: last_expr,
+            span: node.span(),
+        }
     }
 
     fn lower_stmt(&self, node: &SyntaxNode) -> ast::Stmt {
@@ -254,22 +279,28 @@ impl<'a> Lowerer<'a> {
                 for child in &node.children {
                     match child {
                         SyntaxElement::Token(t) => {
-                             if t.kind == TokenKind::Ident {
-                                  name = self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
-                             } else if t.kind == TokenKind::Equal {
-                                  found_eq = true;
-                             }
+                            if t.kind == TokenKind::Ident {
+                                name = self.source[t.span.lo.0 as usize..t.span.hi.0 as usize]
+                                    .to_string();
+                            } else if t.kind == TokenKind::Equal {
+                                found_eq = true;
+                            }
                         }
                         SyntaxElement::Node(n) => {
-                             if found_eq {
-                                  init = Some(self.lower_expr(n));
-                             } else {
-                                  ty = Some(self.lower_type(n));
-                             }
+                            if found_eq {
+                                init = Some(self.lower_expr(n));
+                            } else {
+                                ty = Some(self.lower_type(n));
+                            }
                         }
                     }
                 }
-                ast::Stmt::Let { name, ty, init, span: node.span() }
+                ast::Stmt::Let {
+                    name,
+                    ty,
+                    init,
+                    span: node.span(),
+                }
             }
             NodeKind::ExprStmt => {
                 for child in &node.children {
@@ -290,70 +321,79 @@ impl<'a> Lowerer<'a> {
                 ast::Type::Optional(Box::new(inner))
             }
             NodeKind::PointerType => {
-                 let mut is_mut = false;
-                 let mut ty = ast::Type::Error;
-                 for child in &node.children {
-                      match child {
-                           SyntaxElement::Token(t) if t.kind == TokenKind::Tilde => is_mut = true,
-                           SyntaxElement::Node(n) => ty = self.lower_type(n),
-                           _ => {}
-                      }
-                 }
-                 ast::Type::Pointer(Box::new(ty), is_mut)
+                let mut is_mut = false;
+                let mut ty = ast::Type::Error;
+                for child in &node.children {
+                    match child {
+                        SyntaxElement::Token(t) if t.kind == TokenKind::Tilde => is_mut = true,
+                        SyntaxElement::Node(n) => ty = self.lower_type(n),
+                        _ => {}
+                    }
+                }
+                ast::Type::Pointer(Box::new(ty), is_mut)
             }
             NodeKind::CallExpr | NodeKind::Ident | NodeKind::PathExpr | NodeKind::Type => {
-                 // Check if it's Witness<P> desugared or similar
-                 let mut name = String::new();
-                 let mut args = Vec::new();
-                 
-                 for child in &node.children {
-                     match child {
-                         SyntaxElement::Token(t) if t.kind == TokenKind::Ident => {
-                             name = self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
-                         }
-                         SyntaxElement::Node(n) if n.kind == NodeKind::GenericArgs => {
-                             args = self.lower_generic_args(n);
-                         }
-                         SyntaxElement::Node(n) if n.kind == NodeKind::Ident || n.kind == NodeKind::PathExpr => {
-                             // Recurse for nested structures
-                             let ty = self.lower_type(n);
-                             if let ast::Type::Prim(s) = ty { name = s; }
-                         }
-                         _ => {}
-                     }
-                 }
-                 
-                 if name == "Witness" && !args.is_empty() {
-                     return ast::Type::Witness(Box::new(args[0].clone()));
-                 }
-                 
-                 if node.kind == NodeKind::PathExpr {
-                      return self.lower_type_path(node);
-                 }
+                // Check if it's Witness<P> desugared or similar
+                let mut name = String::new();
+                let mut args = Vec::new();
 
-                 // If we have generic args, preserve them as a Path type
-                 // so the typeck layer can resolve parameterized types (e.g., NonZero<i32>)
-                 if !args.is_empty() && !name.is_empty() {
-                      return ast::Type::Path(vec![name], args);
-                 }
-                 
-                 ast::Type::Prim(if name.is_empty() { "Error".to_string() } else { name })
+                for child in &node.children {
+                    match child {
+                        SyntaxElement::Token(t) if t.kind == TokenKind::Ident => {
+                            name =
+                                self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
+                        }
+                        SyntaxElement::Node(n) if n.kind == NodeKind::GenericArgs => {
+                            args = self.lower_generic_args(n);
+                        }
+                        SyntaxElement::Node(n)
+                            if n.kind == NodeKind::Ident || n.kind == NodeKind::PathExpr =>
+                        {
+                            // Recurse for nested structures
+                            let ty = self.lower_type(n);
+                            if let ast::Type::Prim(s) = ty {
+                                name = s;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                if name == "Witness" && !args.is_empty() {
+                    return ast::Type::Witness(Box::new(args[0].clone()));
+                }
+
+                if node.kind == NodeKind::PathExpr {
+                    return self.lower_type_path(node);
+                }
+
+                // If we have generic args, preserve them as a Path type
+                // so the typeck layer can resolve parameterized types (e.g., NonZero<i32>)
+                if !args.is_empty() && !name.is_empty() {
+                    return ast::Type::Path(vec![name], args);
+                }
+
+                ast::Type::Prim(if name.is_empty() {
+                    "Error".to_string()
+                } else {
+                    name
+                })
             }
             NodeKind::UnaryExpr => {
-                 let mut is_cascade = false;
-                 let mut inner = ast::Type::Error;
-                 for child in &node.children {
-                      match child {
-                           SyntaxElement::Token(t) if t.kind == TokenKind::Bang => is_cascade = true,
-                           SyntaxElement::Node(n) => inner = self.lower_type(n),
-                           _ => {}
-                      }
-                 }
-                 if is_cascade {
-                      ast::Type::Cascade(Box::new(inner))
-                 } else {
-                      ast::Type::Error
-                 }
+                let mut is_cascade = false;
+                let mut inner = ast::Type::Error;
+                for child in &node.children {
+                    match child {
+                        SyntaxElement::Token(t) if t.kind == TokenKind::Bang => is_cascade = true,
+                        SyntaxElement::Node(n) => inner = self.lower_type(n),
+                        _ => {}
+                    }
+                }
+                if is_cascade {
+                    ast::Type::Cascade(Box::new(inner))
+                } else {
+                    ast::Type::Error
+                }
             }
             _ => ast::Type::Error,
         }
@@ -389,13 +429,15 @@ impl<'a> Lowerer<'a> {
                 if let Some(SyntaxElement::Token(token)) = node.children.first() {
                     match &token.kind {
                         TokenKind::Int { .. } => {
-                             let text = &self.source[token.span.lo.0 as usize..token.span.hi.0 as usize];
-                             let val = text.replace("_", "").parse::<i128>().unwrap_or(0);
-                             return ast::Expr::Literal(ast::Literal::Int(val));
+                            let text =
+                                &self.source[token.span.lo.0 as usize..token.span.hi.0 as usize];
+                            let val = text.replace("_", "").parse::<i128>().unwrap_or(0);
+                            return ast::Expr::Literal(ast::Literal::Int(val));
                         }
                         TokenKind::Str { .. } | TokenKind::InterpolatedStr { .. } => {
-                             let text = &self.source[token.span.lo.0 as usize..token.span.hi.0 as usize];
-                             return ast::Expr::Literal(ast::Literal::Str(text.to_string()));
+                            let text =
+                                &self.source[token.span.lo.0 as usize..token.span.hi.0 as usize];
+                            return ast::Expr::Literal(ast::Literal::Str(text.to_string()));
                         }
                         TokenKind::True => return ast::Expr::Literal(ast::Literal::Bool(true)),
                         TokenKind::False => return ast::Expr::Literal(ast::Literal::Bool(false)),
@@ -406,111 +448,119 @@ impl<'a> Lowerer<'a> {
                 ast::Expr::Literal(ast::Literal::Nil)
             }
             NodeKind::Ident => {
-                 for child in &node.children {
-                      if let SyntaxElement::Token(token) = child {
-                           if self.is_naming_ident(token.kind) {
-                                let text = &self.source[token.span.lo.0 as usize..token.span.hi.0 as usize].to_string();
-                                return ast::Expr::Ident(text.clone(), token.span);
-                           }
-                      }
-                 }
-                 ast::Expr::Literal(ast::Literal::Nil)
+                for child in &node.children {
+                    if let SyntaxElement::Token(token) = child {
+                        if self.is_naming_ident(token.kind) {
+                            let text = &self.source
+                                [token.span.lo.0 as usize..token.span.hi.0 as usize]
+                                .to_string();
+                            return ast::Expr::Ident(text.clone(), token.span);
+                        }
+                    }
+                }
+                ast::Expr::Literal(ast::Literal::Nil)
             }
             NodeKind::BinaryExpr => {
-                 let lhs = self.lower_element(&node.children[0]);
-                 let op_tok = &node.children[1];
-                 let rhs = self.lower_element(&node.children[2]);
-                 
-                 let op = match op_tok {
-                      SyntaxElement::Token(t) => match t.kind {
-                           TokenKind::Plus => ast::BinaryOp::Add,
-                           TokenKind::Minus => ast::BinaryOp::Sub,
-                           TokenKind::Star => ast::BinaryOp::Mul,
-                           TokenKind::Slash => ast::BinaryOp::Div,
-                           TokenKind::EqEq => ast::BinaryOp::Eq,
-                           TokenKind::NotEq => ast::BinaryOp::Ne,
-                           TokenKind::Pipe => ast::BinaryOp::Pipeline,
-                            TokenKind::QuestionQuestion => return self.desugar_coalesce(lhs, rhs),
-                            TokenKind::And => ast::BinaryOp::And,
-                            TokenKind::Or => ast::BinaryOp::Or,
-                           _ => ast::BinaryOp::Add,
-                      }
-                      _ => ast::BinaryOp::Add,
-                 };
-                 ast::Expr::Binary(op, Box::new(lhs), Box::new(rhs))
+                let lhs = self.lower_element(&node.children[0]);
+                let op_tok = &node.children[1];
+                let rhs = self.lower_element(&node.children[2]);
+
+                let op = match op_tok {
+                    SyntaxElement::Token(t) => match t.kind {
+                        TokenKind::Plus => ast::BinaryOp::Add,
+                        TokenKind::Minus => ast::BinaryOp::Sub,
+                        TokenKind::Star => ast::BinaryOp::Mul,
+                        TokenKind::Slash => ast::BinaryOp::Div,
+                        TokenKind::EqEq => ast::BinaryOp::Eq,
+                        TokenKind::NotEq => ast::BinaryOp::Ne,
+                        TokenKind::Pipe => ast::BinaryOp::Pipeline,
+                        TokenKind::QuestionQuestion => return self.desugar_coalesce(lhs, rhs),
+                        TokenKind::And => ast::BinaryOp::And,
+                        TokenKind::Or => ast::BinaryOp::Or,
+                        _ => ast::BinaryOp::Add,
+                    },
+                    _ => ast::BinaryOp::Add,
+                };
+                ast::Expr::Binary(op, Box::new(lhs), Box::new(rhs))
             }
             NodeKind::UnaryExpr => {
                 let mut op = ast::UnaryOp::Neg;
                 let mut expr = None;
                 for child in &node.children {
-                     match child {
-                          SyntaxElement::Token(t) => {
-                               op = match t.kind {
-                                    TokenKind::Minus => ast::UnaryOp::Neg,
-                                    TokenKind::Not => ast::UnaryOp::Not,
-                                    TokenKind::Tilde => ast::UnaryOp::BitNot,
-                                    TokenKind::Star => ast::UnaryOp::Deref,
-                                    TokenKind::Ampersand => ast::UnaryOp::Ref(false),
-                                    TokenKind::AmpersandTilde => ast::UnaryOp::Ref(true),
-                                    TokenKind::Bang => {
-                                         // Postfix !
-                                         let inner = self.lower_element(&node.children[0]);
-                                         return self.desugar_propagate(inner);
-                                    }
-                                    _ => ast::UnaryOp::Neg,
-                               };
-                          }
-                          SyntaxElement::Node(n) => expr = Some(self.lower_expr(n)),
-                     }
+                    match child {
+                        SyntaxElement::Token(t) => {
+                            op = match t.kind {
+                                TokenKind::Minus => ast::UnaryOp::Neg,
+                                TokenKind::Not => ast::UnaryOp::Not,
+                                TokenKind::Tilde => ast::UnaryOp::BitNot,
+                                TokenKind::Star => ast::UnaryOp::Deref,
+                                TokenKind::Ampersand => ast::UnaryOp::Ref(false),
+                                TokenKind::AmpersandTilde => ast::UnaryOp::Ref(true),
+                                TokenKind::Bang => {
+                                    // Postfix !
+                                    let inner = self.lower_element(&node.children[0]);
+                                    return self.desugar_propagate(inner);
+                                }
+                                _ => ast::UnaryOp::Neg,
+                            };
+                        }
+                        SyntaxElement::Node(n) => expr = Some(self.lower_expr(n)),
+                    }
                 }
-                ast::Expr::Unary(op, Box::new(expr.unwrap_or(ast::Expr::Literal(ast::Literal::Nil))))
+                ast::Expr::Unary(
+                    op,
+                    Box::new(expr.unwrap_or(ast::Expr::Literal(ast::Literal::Nil))),
+                )
             }
             NodeKind::CallExpr => {
-                 let target = self.lower_element(&node.children[0]);
-                 let mut args = Vec::new();
-                 for i in 1..node.children.len() {
-                      if let SyntaxElement::Node(n) = &node.children[i] {
-                           args.push(self.lower_expr(n));
-                      }
-                 }
-                 ast::Expr::Call(Box::new(target), args)
+                let target = self.lower_element(&node.children[0]);
+                let mut args = Vec::new();
+                for i in 1..node.children.len() {
+                    if let SyntaxElement::Node(n) = &node.children[i] {
+                        args.push(self.lower_expr(n));
+                    }
+                }
+                ast::Expr::Call(Box::new(target), args)
             }
             NodeKind::MemberExpr => {
-                 let target = self.lower_element(&node.children[0]);
-                 let mut name = String::new();
-                 let mut is_optional = false;
-                 for child in &node.children {
-                      match child {
-                           SyntaxElement::Token(t) => {
-                                if t.kind == TokenKind::Ident {
-                                     name = self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
-                                } else if t.kind == TokenKind::Question {
-                                     is_optional = true;
-                                }
-                           }
-                           _ => {}
-                      }
-                 }
-                 if is_optional {
-                      return self.desugar_optional_chain(target, name, node.span());
-                 }
-                 ast::Expr::Member(Box::new(target), name, node.span())
+                let target = self.lower_element(&node.children[0]);
+                let mut name = String::new();
+                let mut is_optional = false;
+                for child in &node.children {
+                    match child {
+                        SyntaxElement::Token(t) => {
+                            if t.kind == TokenKind::Ident {
+                                name = self.source[t.span.lo.0 as usize..t.span.hi.0 as usize]
+                                    .to_string();
+                            } else if t.kind == TokenKind::Question {
+                                is_optional = true;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                if is_optional {
+                    return self.desugar_optional_chain(target, name, node.span());
+                }
+                ast::Expr::Member(Box::new(target), name, node.span())
             }
             NodeKind::PathExpr => {
-                 let mut path = Vec::new();
-                 let mut generic_args = Vec::new();
-                 for child in &node.children {
-                      match child {
-                           SyntaxElement::Token(t) if t.kind == TokenKind::Ident => {
-                                path.push(self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string());
-                           }
-                           SyntaxElement::Node(n) if n.kind == NodeKind::GenericArgs => {
-                                generic_args = self.lower_generic_args(n);
-                           }
-                           _ => {}
-                      }
-                 }
-                 ast::Expr::Path(path, generic_args)
+                let mut path = Vec::new();
+                let mut generic_args = Vec::new();
+                for child in &node.children {
+                    match child {
+                        SyntaxElement::Token(t) if t.kind == TokenKind::Ident => {
+                            path.push(
+                                self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string(),
+                            );
+                        }
+                        SyntaxElement::Node(n) if n.kind == NodeKind::GenericArgs => {
+                            generic_args = self.lower_generic_args(n);
+                        }
+                        _ => {}
+                    }
+                }
+                ast::Expr::Path(path, generic_args)
             }
             NodeKind::GivenExpr => {
                 let mut cond = None;
@@ -518,15 +568,21 @@ impl<'a> Lowerer<'a> {
                 let mut else_expr = None;
                 for child in &node.children {
                     match child {
-                         SyntaxElement::Node(n) if n.kind == NodeKind::Block => then_block = Some(self.lower_block(n)),
-                         SyntaxElement::Node(n) if cond.is_none() => cond = Some(self.lower_expr(n)),
-                         SyntaxElement::Node(n) => else_expr = Some(Box::new(self.lower_expr(n))),
-                         _ => {}
+                        SyntaxElement::Node(n) if n.kind == NodeKind::Block => {
+                            then_block = Some(self.lower_block(n))
+                        }
+                        SyntaxElement::Node(n) if cond.is_none() => cond = Some(self.lower_expr(n)),
+                        SyntaxElement::Node(n) => else_expr = Some(Box::new(self.lower_expr(n))),
+                        _ => {}
                     }
                 }
                 ast::Expr::Given {
                     cond: Box::new(cond.unwrap_or(ast::Expr::Literal(ast::Literal::Nil))),
-                    then_block: then_block.unwrap_or(ast::Block { stmts: vec![], expr: None, span: node.span() }),
+                    then_block: then_block.unwrap_or(ast::Block {
+                        stmts: vec![],
+                        expr: None,
+                        span: node.span(),
+                    }),
                     else_expr,
                 }
             }
@@ -535,8 +591,8 @@ impl<'a> Lowerer<'a> {
                 let mut inner_node = None;
                 for child in &node.children {
                     if let SyntaxElement::Node(n) = child {
-                         inner_node = Some(n);
-                         break;
+                        inner_node = Some(n);
+                        break;
                     }
                 }
                 if let Some(n) = inner_node {
@@ -559,7 +615,11 @@ impl<'a> Lowerer<'a> {
                                 for gc in &n.children {
                                     if let SyntaxElement::Token(t) = gc {
                                         if t.kind == TokenKind::Ident {
-                                            current_field = Some(self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string());
+                                            current_field = Some(
+                                                self.source
+                                                    [t.span.lo.0 as usize..t.span.hi.0 as usize]
+                                                    .to_string(),
+                                            );
                                             break;
                                         }
                                     }
@@ -583,6 +643,27 @@ impl<'a> Lowerer<'a> {
                 }
                 ast::Expr::StructLiteral { path, fields }
             }
+            NodeKind::ZoneExpr => {
+                let mut name = String::new();
+                let mut body = ast::Block {
+                    stmts: vec![],
+                    expr: None,
+                    span: node.span(),
+                };
+                for child in &node.children {
+                    match child {
+                        SyntaxElement::Token(t) if t.kind == TokenKind::Ident => {
+                            name =
+                                self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
+                        }
+                        SyntaxElement::Node(n) if n.kind == NodeKind::Block => {
+                            body = self.lower_block(n);
+                        }
+                        _ => {}
+                    }
+                }
+                ast::Expr::Zone { name, body }
+            }
             _ => ast::Expr::Literal(ast::Literal::Nil),
         }
     }
@@ -593,7 +674,10 @@ impl<'a> Lowerer<'a> {
             target: Box::new(expr),
             arms: vec![
                 ast::Arm {
-                    pattern: ast::Pattern::Variant("Some".to_string(), vec![ast::Pattern::Ident("v".to_string())]),
+                    pattern: ast::Pattern::Variant(
+                        "Some".to_string(),
+                        vec![ast::Pattern::Ident("v".to_string())],
+                    ),
                     body: ast::Expr::Ident("v".to_string(), Span::dummy()),
                     span: Span::dummy(),
                 },
@@ -603,16 +687,25 @@ impl<'a> Lowerer<'a> {
                     span: Span::dummy(),
                 },
                 ast::Arm {
-                    pattern: ast::Pattern::Variant("Ok".to_string(), vec![ast::Pattern::Ident("v".to_string())]),
+                    pattern: ast::Pattern::Variant(
+                        "Ok".to_string(),
+                        vec![ast::Pattern::Ident("v".to_string())],
+                    ),
                     body: ast::Expr::Ident("v".to_string(), Span::dummy()),
                     span: Span::dummy(),
                 },
                 ast::Arm {
-                    pattern: ast::Pattern::Variant("Err".to_string(), vec![ast::Pattern::Ident("e".to_string())]),
-                    body: ast::Expr::Return(Box::new(ast::Expr::Ident("e".to_string(), Span::dummy()))),
+                    pattern: ast::Pattern::Variant(
+                        "Err".to_string(),
+                        vec![ast::Pattern::Ident("e".to_string())],
+                    ),
+                    body: ast::Expr::Return(Box::new(ast::Expr::Ident(
+                        "e".to_string(),
+                        Span::dummy(),
+                    ))),
                     span: Span::dummy(),
-                }
-            ]
+                },
+            ],
         }
     }
 
@@ -622,7 +715,10 @@ impl<'a> Lowerer<'a> {
             target: Box::new(lhs),
             arms: vec![
                 ast::Arm {
-                    pattern: ast::Pattern::Variant("Some".to_string(), vec![ast::Pattern::Ident("v".to_string())]),
+                    pattern: ast::Pattern::Variant(
+                        "Some".to_string(),
+                        vec![ast::Pattern::Ident("v".to_string())],
+                    ),
                     body: ast::Expr::Ident("v".to_string(), Span::dummy()),
                     span: Span::dummy(),
                 },
@@ -632,7 +728,10 @@ impl<'a> Lowerer<'a> {
                     span: Span::dummy(),
                 },
                 ast::Arm {
-                    pattern: ast::Pattern::Variant("Ok".to_string(), vec![ast::Pattern::Ident("v".to_string())]),
+                    pattern: ast::Pattern::Variant(
+                        "Ok".to_string(),
+                        vec![ast::Pattern::Ident("v".to_string())],
+                    ),
                     body: ast::Expr::Ident("v".to_string(), Span::dummy()),
                     span: Span::dummy(),
                 },
@@ -641,7 +740,7 @@ impl<'a> Lowerer<'a> {
                     body: rhs,
                     span: Span::dummy(),
                 },
-            ]
+            ],
         }
     }
 
@@ -651,7 +750,11 @@ impl<'a> Lowerer<'a> {
             cond: Box::new(target),
             then_block: ast::Block {
                 stmts: vec![],
-                expr: Some(Box::new(ast::Expr::Member(Box::new(ast::Expr::Ident("t".to_string(), Span::dummy())), name, span))),
+                expr: Some(Box::new(ast::Expr::Member(
+                    Box::new(ast::Expr::Ident("t".to_string(), Span::dummy())),
+                    name,
+                    span,
+                ))),
                 span,
             },
             else_expr: Some(Box::new(ast::Expr::Literal(ast::Literal::Nil))),
@@ -665,7 +768,7 @@ impl<'a> Lowerer<'a> {
                 if n.kind == NodeKind::GenericArg {
                     for gc in &n.children {
                         if let SyntaxElement::Node(ty_node) = gc {
-                             args.push(self.lower_type(ty_node));
+                            args.push(self.lower_type(ty_node));
                         }
                     }
                 }
@@ -700,33 +803,44 @@ impl<'a> Lowerer<'a> {
                 _ => {}
             }
         }
-        ast::Scroll { name, variants, attributes, span: node.span() }
+        ast::Scroll {
+            name,
+            variants,
+            attributes,
+            span: node.span(),
+        }
     }
 
     fn lower_variant(&self, node: &SyntaxNode) -> ast::Variant {
         let mut name = String::new();
         let mut fields = None;
         for child in &node.children {
-             match child {
-                 SyntaxElement::Token(t) if t.kind == TokenKind::Ident => {
-                     name = self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
-                 }
-                 SyntaxElement::Node(n) if n.kind == NodeKind::Field => {
-                      let f = self.lower_field(n);
-                      if fields.is_none() { fields = Some(vec![]); }
-                      fields.as_mut().unwrap().push(f);
-                 }
-                 _ => {}
-             }
+            match child {
+                SyntaxElement::Token(t) if t.kind == TokenKind::Ident => {
+                    name = self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
+                }
+                SyntaxElement::Node(n) if n.kind == NodeKind::Field => {
+                    let f = self.lower_field(n);
+                    if fields.is_none() {
+                        fields = Some(vec![]);
+                    }
+                    fields.as_mut().unwrap().push(f);
+                }
+                _ => {}
+            }
         }
-        ast::Variant { name, fields, span: node.span() }
+        ast::Variant {
+            name,
+            fields,
+            span: node.span(),
+        }
     }
 
     fn lower_alias(&self, node: &SyntaxNode) -> ast::Alias {
         let mut name = String::new();
         let mut ty = ast::Type::Error;
         let mut attributes = Vec::new();
-        
+
         for child in &node.children {
             match child {
                 SyntaxElement::Node(n) if n.kind == NodeKind::Attributes => {
@@ -741,15 +855,20 @@ impl<'a> Lowerer<'a> {
                 _ => {}
             }
         }
-        
-        ast::Alias { name, ty, attributes, span: node.span() }
+
+        ast::Alias {
+            name,
+            ty,
+            attributes,
+            span: node.span(),
+        }
     }
     fn lower_weave(&self, node: &SyntaxNode) -> ast::Weave {
         let mut name = String::new();
         let mut associated_types = Vec::new();
         let mut methods = Vec::new();
         let mut attributes = Vec::new();
-        
+
         for child in &node.children {
             match child {
                 SyntaxElement::Node(n) if n.kind == NodeKind::Attributes => {
@@ -768,7 +887,7 @@ impl<'a> Lowerer<'a> {
                 _ => {}
             }
         }
-        
+
         ast::Weave {
             name,
             associated_types,
@@ -791,32 +910,43 @@ impl<'a> Lowerer<'a> {
                     name = self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
                 }
                 SyntaxElement::Node(n) => {
-                     if let Some(item) = self.lower_item(n) {
-                          items.push(item);
-                     }
+                    if let Some(item) = self.lower_item(n) {
+                        items.push(item);
+                    }
                 }
                 _ => {}
             }
         }
-        ast::Ward { name, items, attributes, span: node.span() }
+        ast::Ward {
+            name,
+            items,
+            attributes,
+            span: node.span(),
+        }
     }
 
     fn lower_draw(&self, node: &SyntaxNode) -> ast::Draw {
         let mut path = Vec::new();
         let mut is_wildcard = false;
         for child in &node.children {
-             match child {
-                 SyntaxElement::Token(t) => {
-                      if t.kind == TokenKind::Ident {
-                           path.push(self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string());
-                      } else if t.kind == TokenKind::Star {
-                           is_wildcard = true;
-                      }
-                 }
-                 _ => {}
-             }
+            match child {
+                SyntaxElement::Token(t) => {
+                    if t.kind == TokenKind::Ident {
+                        path.push(
+                            self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string(),
+                        );
+                    } else if t.kind == TokenKind::Star {
+                        is_wildcard = true;
+                    }
+                }
+                _ => {}
+            }
         }
-        ast::Draw { path, is_wildcard, span: node.span() }
+        ast::Draw {
+            path,
+            is_wildcard,
+            span: node.span(),
+        }
     }
 
     fn lower_impl(&self, node: &SyntaxNode) -> ast::Impl {
@@ -824,7 +954,7 @@ impl<'a> Lowerer<'a> {
         let mut weave = None;
         let mut items = Vec::new();
         let mut attributes = Vec::new();
-        
+
         let mut found_for = false;
         for child in &node.children {
             match child {
@@ -832,38 +962,48 @@ impl<'a> Lowerer<'a> {
                     attributes = self.lower_attributes(n);
                 }
                 SyntaxElement::Token(t) if t.kind == TokenKind::For => {
-                     found_for = true;
+                    found_for = true;
                 }
-                SyntaxElement::Node(n) if n.kind == NodeKind::ForgeDecl || n.kind == NodeKind::TypeAlias => {
-                     if let Some(item) = self.lower_item(n) {
-                          items.push(item);
-                     }
+                SyntaxElement::Node(n)
+                    if n.kind == NodeKind::ForgeDecl || n.kind == NodeKind::TypeAlias =>
+                {
+                    if let Some(item) = self.lower_item(n) {
+                        items.push(item);
+                    }
                 }
                 SyntaxElement::Token(t) if t.kind == TokenKind::Ident => {
-                     let ty = ast::Type::Prim(self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string());
-                     if !found_for {
-                          weave = Some(ty);
-                     } else {
-                          target = ty;
-                     }
+                    let ty = ast::Type::Prim(
+                        self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string(),
+                    );
+                    if !found_for {
+                        weave = Some(ty);
+                    } else {
+                        target = ty;
+                    }
                 }
                 SyntaxElement::Node(n) if n.kind == NodeKind::Type => {
-                     let ty = self.lower_type(n);
-                     if !found_for {
-                          weave = Some(ty);
-                     } else {
-                          target = ty;
-                     }
+                    let ty = self.lower_type(n);
+                    if !found_for {
+                        weave = Some(ty);
+                    } else {
+                        target = ty;
+                    }
                 }
                 _ => {}
             }
         }
-        
+
         if !found_for && weave.is_some() {
-             target = weave.take().unwrap();
+            target = weave.take().unwrap();
         }
 
-        ast::Impl { target, weave, items, attributes, span: node.span() }
+        ast::Impl {
+            target,
+            weave,
+            items,
+            attributes,
+            span: node.span(),
+        }
     }
 
     fn lower_effect(&self, node: &SyntaxNode) -> String {
@@ -879,14 +1019,38 @@ impl<'a> Lowerer<'a> {
 
     fn is_naming_ident(&self, kind: TokenKind) -> bool {
         match kind {
-            TokenKind::Ident | TokenKind::SelfKw | TokenKind::Next | TokenKind::Loop | TokenKind::Each | 
-            TokenKind::While | TokenKind::Break | TokenKind::Give | TokenKind::Type | 
-            TokenKind::Forge | TokenKind::Sole | TokenKind::Pure | TokenKind::Open | 
-            TokenKind::Hidden | TokenKind::Draw | TokenKind::Seek | TokenKind::Catch |
-            TokenKind::Flow | TokenKind::Tide | TokenKind::Zone | TokenKind::Bridge |
-            TokenKind::Raw | TokenKind::Echo | TokenKind::Ward | TokenKind::Scroll |
-            TokenKind::Dual | TokenKind::Alias | TokenKind::Pkg | TokenKind::Comptime |
-            TokenKind::Static | TokenKind::Extern | TokenKind::Bind => true,
+            TokenKind::Ident
+            | TokenKind::SelfKw
+            | TokenKind::Next
+            | TokenKind::Loop
+            | TokenKind::Each
+            | TokenKind::While
+            | TokenKind::Break
+            | TokenKind::Give
+            | TokenKind::Type
+            | TokenKind::Forge
+            | TokenKind::Sole
+            | TokenKind::Pure
+            | TokenKind::Open
+            | TokenKind::Hidden
+            | TokenKind::Draw
+            | TokenKind::Seek
+            | TokenKind::Catch
+            | TokenKind::Flow
+            | TokenKind::Tide
+            | TokenKind::Zone
+            | TokenKind::Bridge
+            | TokenKind::Raw
+            | TokenKind::Echo
+            | TokenKind::Ward
+            | TokenKind::Scroll
+            | TokenKind::Dual
+            | TokenKind::Alias
+            | TokenKind::Pkg
+            | TokenKind::Comptime
+            | TokenKind::Static
+            | TokenKind::Extern
+            | TokenKind::Bind => true,
             _ => false,
         }
     }
@@ -911,20 +1075,26 @@ impl<'a> Lowerer<'a> {
                 SyntaxElement::Token(t) if t.kind == TokenKind::Ident => {
                     name = self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
                 }
-                SyntaxElement::Node(n) if n.kind != NodeKind::Attributes && n.kind != NodeKind::Attribute => {
+                SyntaxElement::Node(n)
+                    if n.kind != NodeKind::Attributes && n.kind != NodeKind::Attribute =>
+                {
                     args.push(self.lower_expr(n));
                 }
                 _ => {}
             }
         }
-        ast::Attribute { name, args, span: node.span() }
+        ast::Attribute {
+            name,
+            args,
+            span: node.span(),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use izel_lexer::{Lexer, TokenKind, Token};
+    use izel_lexer::{Lexer, Token, TokenKind};
 
     fn tokenize(source: &str) -> Vec<Token> {
         let mut lexer = Lexer::new(source, izel_span::SourceId(0));
@@ -946,10 +1116,10 @@ mod tests {
         let tokens = tokenize(source);
         let mut parser = izel_parser::Parser::new(tokens);
         let cst = parser.parse_decl();
-        
+
         let lowerer = Lowerer::new(source);
         let item = lowerer.lower_item(&cst).unwrap();
-        
+
         if let ast::Item::Forge(f) = item {
             assert_eq!(f.name, "f");
             assert_eq!(f.attributes.len(), 1);
@@ -965,10 +1135,10 @@ mod tests {
         let tokens = tokenize(source);
         let mut parser = izel_parser::Parser::new(tokens);
         let cst = parser.parse_decl();
-        
+
         let lowerer = Lowerer::new(source);
         let item = lowerer.lower_item(&cst).unwrap();
-        
+
         if let ast::Item::Forge(f) = item {
             assert_eq!(f.name, "f");
             assert_eq!(f.attributes.len(), 1);
@@ -978,5 +1148,34 @@ mod tests {
             panic!("Expected Forge item");
         }
     }
-}
 
+    #[test]
+    fn test_lower_zone_expr() {
+        let source = "zone mem { let x = 1; }";
+        let tokens = tokenize(source);
+        let mut parser = izel_parser::Parser::new(tokens);
+        let cst = parser.parse_stmt();
+
+        let lowerer = Lowerer::new(source);
+
+        // Due to parser rules, parsing `zone ...` as a statement produces an ExprStmt containing a ZoneExpr.
+        let zone_node = if cst.kind == NodeKind::ExprStmt {
+            if let SyntaxElement::Node(n) = &cst.children[0] {
+                n
+            } else {
+                panic!("Expected node")
+            }
+        } else {
+            &cst
+        };
+
+        let expr = lowerer.lower_expr(zone_node);
+        match expr {
+            ast::Expr::Zone { name, body } => {
+                assert_eq!(name, "mem");
+                assert_eq!(body.stmts.len(), 1);
+            }
+            _ => panic!("Expected ast::Expr::Zone, got {:?}", expr),
+        }
+    }
+}

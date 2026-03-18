@@ -3,7 +3,7 @@ use izel_lexer::TokenKind;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NodeKind {
     SourceFile,
-    
+
     // Declarations
     ForgeDecl,
     ShapeDecl,
@@ -30,11 +30,11 @@ pub enum NodeKind {
     ReturnPart,
     Block,
     Effect, // Added Effect variant here
-    
+
     // Statements
     LetStmt,
     ExprStmt,
-    
+
     // Expressions
     Literal,
     Ident,
@@ -47,13 +47,14 @@ pub enum NodeKind {
     LoopExpr,
     WhileExpr,
     EachExpr,
+    ZoneExpr,
     OptionalType,
     PointerType,
     BindExpr,
     PathExpr,
     StructLiteral,
     MemberExpr,
-    
+
     // Trivia & Tokens in CST
     Token(TokenKind),
     Error,

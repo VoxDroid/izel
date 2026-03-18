@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Literal, BinaryOp, UnaryOp};
+use crate::ast::{BinaryOp, Expr, Literal, UnaryOp};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -26,7 +26,13 @@ pub fn eval_expr(expr: &Expr, context: &HashMap<String, ConstValue>) -> ConstVal
                     BinaryOp::Add => ConstValue::Int(l.wrapping_add(r)),
                     BinaryOp::Sub => ConstValue::Int(l.wrapping_sub(r)),
                     BinaryOp::Mul => ConstValue::Int(l.wrapping_mul(r)),
-                    BinaryOp::Div => if r != 0 { ConstValue::Int(l / r) } else { ConstValue::Unknown },
+                    BinaryOp::Div => {
+                        if r != 0 {
+                            ConstValue::Int(l / r)
+                        } else {
+                            ConstValue::Unknown
+                        }
+                    }
                     BinaryOp::Eq => ConstValue::Bool(l == r),
                     BinaryOp::Ne => ConstValue::Bool(l != r),
                     BinaryOp::Lt => ConstValue::Bool(l < r),

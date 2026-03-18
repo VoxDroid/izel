@@ -1,0 +1,39 @@
+// Demonstrates the scoped arena allocator feature (Memory Zones)
+
+shape Node {
+    value: i32,
+    next: ?&~Node,
+}
+
+forge process_graph() {
+    // A zone block defines a memory region
+    // The string 'temp_arena' is bound within this block as a ZoneAllocator
+    zone temp_arena {
+        
+        // Allocate nodes within the 'temp_arena' zone using the allocator
+        let mut head = temp_arena.alloc(Node { value: 1, next: nil });
+        let mut second = temp_arena.alloc(Node { value: 2, next: nil });
+        let mut third = temp_arena.alloc(Node { value: 3, next: nil });
+
+        // Link the nodes
+        head.next = second;
+        second.next = third;
+
+        // Perform some processing
+        let mut curr = head;
+        while let Some(node) = curr {
+            // print(node.value);
+            curr = node.next;
+        }
+
+        // Error: memory escapes the zone block!
+        // The borrow checker will catch this if we tried to return or leak it out
+        // let mut escaped = &~head; // This would cause a borrow checker error if used outside
+    }
+    // At the end of the `zone` block, `temp_arena` is destroyed.
+    // All nodes (head, second, third) are bulk-freed automatically.
+}
+
+forge main() {
+    process_graph();
+}

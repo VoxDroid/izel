@@ -24,7 +24,7 @@ impl<'a> Lexer<'a> {
         }
 
         let first_char = self.cursor.first();
-        
+
         // Handle whitespace
         if first_char.is_whitespace() {
             self.cursor.bump();
@@ -195,57 +195,57 @@ impl<'a> Lexer<'a> {
         }
 
         match text {
-            "forge"    => TokenKind::Forge,
-            "shape"    => TokenKind::Shape,
-            "scroll"   => TokenKind::Scroll,
-            "weave"    => TokenKind::Weave,
-            "ward"     => TokenKind::Ward,
-            "echo"     => TokenKind::Echo,
-            "branch"   => TokenKind::Branch,
-            "given"    => TokenKind::Given,
-            "else"     => TokenKind::Else,
-            "loop"     => TokenKind::Loop,
-            "each"     => TokenKind::Each,
-            "while"    => TokenKind::While,
-            "break"    => TokenKind::Break,
-            "next"     => TokenKind::Next,
-            "give"     => TokenKind::Give,
-            "let"      => TokenKind::Let,
-            "raw"      => TokenKind::Raw,
-            "bridge"   => TokenKind::Bridge,
-            "flow"     => TokenKind::Flow,
-            "tide"     => TokenKind::Tide,
-            "zone"     => TokenKind::Zone,
-            "dual"     => TokenKind::Dual,
-            "seek"     => TokenKind::Seek,
-            "catch"    => TokenKind::Catch,
-            "draw"     => TokenKind::Draw,
-            "open"     => TokenKind::Open,
-            "hidden"   => TokenKind::Hidden,
-            "pkg"      => TokenKind::Pkg,
-            "pure"     => TokenKind::Pure,
-            "sole"     => TokenKind::Sole,
-            "self"     => TokenKind::SelfKw,
-            "Self"     => TokenKind::SelfType,
-            "true"     => TokenKind::True,
-            "false"    => TokenKind::False,
-            "nil"      => TokenKind::Nil,
-            "as"       => TokenKind::As,
-            "in"       => TokenKind::In,
-            "of"       => TokenKind::Of,
-            "is"       => TokenKind::Is,
-            "not"      => TokenKind::Not,
-            "and"      => TokenKind::And,
-            "or"       => TokenKind::Or,
+            "forge" => TokenKind::Forge,
+            "shape" => TokenKind::Shape,
+            "scroll" => TokenKind::Scroll,
+            "weave" => TokenKind::Weave,
+            "ward" => TokenKind::Ward,
+            "echo" => TokenKind::Echo,
+            "branch" => TokenKind::Branch,
+            "given" => TokenKind::Given,
+            "else" => TokenKind::Else,
+            "loop" => TokenKind::Loop,
+            "each" => TokenKind::Each,
+            "while" => TokenKind::While,
+            "break" => TokenKind::Break,
+            "next" => TokenKind::Next,
+            "give" => TokenKind::Give,
+            "let" => TokenKind::Let,
+            "raw" => TokenKind::Raw,
+            "bridge" => TokenKind::Bridge,
+            "flow" => TokenKind::Flow,
+            "tide" => TokenKind::Tide,
+            "zone" => TokenKind::Zone,
+            "dual" => TokenKind::Dual,
+            "seek" => TokenKind::Seek,
+            "catch" => TokenKind::Catch,
+            "draw" => TokenKind::Draw,
+            "open" => TokenKind::Open,
+            "hidden" => TokenKind::Hidden,
+            "pkg" => TokenKind::Pkg,
+            "pure" => TokenKind::Pure,
+            "sole" => TokenKind::Sole,
+            "self" => TokenKind::SelfKw,
+            "Self" => TokenKind::SelfType,
+            "true" => TokenKind::True,
+            "false" => TokenKind::False,
+            "nil" => TokenKind::Nil,
+            "as" => TokenKind::As,
+            "in" => TokenKind::In,
+            "of" => TokenKind::Of,
+            "is" => TokenKind::Is,
+            "not" => TokenKind::Not,
+            "and" => TokenKind::And,
+            "or" => TokenKind::Or,
             "comptime" => TokenKind::Comptime,
-            "static"   => TokenKind::Static,
-            "extern"   => TokenKind::Extern,
-            "type"     => TokenKind::Type,
-            "alias"    => TokenKind::Alias,
-            "impl"     => TokenKind::Impl,
-            "for"      => TokenKind::For,
-            "bind"     => TokenKind::Bind,
-            _          => TokenKind::Ident,
+            "static" => TokenKind::Static,
+            "extern" => TokenKind::Extern,
+            "type" => TokenKind::Type,
+            "alias" => TokenKind::Alias,
+            "impl" => TokenKind::Impl,
+            "for" => TokenKind::For,
+            "bind" => TokenKind::Bind,
+            _ => TokenKind::Ident,
         }
     }
 
@@ -260,21 +260,35 @@ impl<'a> Lexer<'a> {
         let mut base = Base::Decimal;
         if first == '0' {
             match self.cursor.first() {
-                'x' => { self.cursor.bump(); base = Base::Hexadecimal; }
-                'b' => { self.cursor.bump(); base = Base::Binary; }
-                'o' => { self.cursor.bump(); base = Base::Octal; }
+                'x' => {
+                    self.cursor.bump();
+                    base = Base::Hexadecimal;
+                }
+                'b' => {
+                    self.cursor.bump();
+                    base = Base::Binary;
+                }
+                'o' => {
+                    self.cursor.bump();
+                    base = Base::Octal;
+                }
                 _ => {}
             }
         }
 
-        self.cursor.eat_while(|c| c.is_ascii_digit() || c == '_' || (base == Base::Hexadecimal && c.is_ascii_hexdigit()));
-        
+        self.cursor.eat_while(|c| {
+            c.is_ascii_digit() || c == '_' || (base == Base::Hexadecimal && c.is_ascii_hexdigit())
+        });
+
         if self.cursor.first() == '.' && self.cursor.second() != '.' {
             self.cursor.bump();
             self.cursor.eat_while(|c| c.is_ascii_digit() || c == '_');
             TokenKind::Float
         } else {
-            TokenKind::Int { base, empty_int: false }
+            TokenKind::Int {
+                base,
+                empty_int: false,
+            }
         }
     }
 

@@ -166,6 +166,10 @@ pub enum Expr {
     Return(Box<Expr>),
     Next,
     Break,
+    Zone {
+        name: String,
+        body: Block,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -179,17 +183,34 @@ pub enum Literal {
 
 #[derive(Debug, Clone)]
 pub enum BinaryOp {
-    Add, Sub, Mul, Div, Rem,
-    Eq, Ne, Lt, Gt, Le, Ge,
-    And, Or,
-    BitAnd, BitOr, BitXor,
-    Shl, Shr,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    Eq,
+    Ne,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    And,
+    Or,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
     Pipeline,
 }
 
 #[derive(Debug, Clone)]
 pub enum UnaryOp {
-    Neg, Not, BitNot, Deref, Ref(bool), // bool is mut
+    Neg,
+    Not,
+    BitNot,
+    Deref,
+    Ref(bool), // bool is mut
 }
 
 #[derive(Debug, Clone)]
