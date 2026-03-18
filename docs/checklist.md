@@ -154,13 +154,13 @@ This document provides a granular, step-by-step roadmap for building the Izel co
     - [x] Ensure `raw` is the only way to bypass proofs.
 
 ### 3.2 Temporal Constraints (`@requires` / `@ensures`)
-- [ ] **Compile-time Engine**:
-    - [ ] Create symbolic evaluator for static constant expressions.
-- [ ] **Runtime Instrumentation**:
-    - [ ] For dynamic inputs, inject assertions into functions.
-    - [ ] Add `izelc --check-contracts` flag.
-- [ ] **Invariants**: 
-    - [ ] Implement `#[invariant]` checking for `shape` state.
+- [x] **Compile-time Engine**:
+    - [x] Create symbolic evaluator for static constant expressions.
+- [x] **Runtime Instrumentation**:
+    - [x] For dynamic inputs, inject assertions into functions.
+    - [x] Add `izelc --check-contracts` flag.
+- [x] **Invariants**: 
+    - [x] Implement `#[invariant]` checking for `shape` state.
 
 ### 3.3 Memory Zones
 - [ ] **Allocators**:

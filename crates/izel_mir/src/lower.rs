@@ -6,6 +6,7 @@ pub struct MirLowerer {
     body: MirBody,
     current_block: BlockId,
     scopes: Vec<std::collections::HashMap<String, Local>>,
+    pub check_contracts: bool,
 }
 
 impl MirLowerer {
@@ -16,6 +17,7 @@ impl MirLowerer {
             body, 
             current_block: entry,
             scopes: vec![std::collections::HashMap::new()],
+            check_contracts: false,
         }
     }
 
@@ -49,10 +51,32 @@ impl MirLowerer {
             self.scopes.last_mut().unwrap().insert(param.name.clone(), local);
         }
 
+        // Inject @requires assertions at function entry (when --check-contracts is on)
+        if self.check_contracts {
+            for (i, req) in forge.requires.iter().enumerate() {
+                let cond_rv = self.lower_expr(req);
+                let cond_op = self.rvalue_to_operand(cond_rv);
+                let msg = format!("precondition #{} of '{}' violated", i, forge.name);
+                let instr = Instruction::Assert(cond_op, msg);
+                self.body.blocks.node_weight_mut(self.current_block).unwrap().instructions.push(instr);
+            }
+        }
+
         if let Some(body) = &forge.body {
             self.lower_block(body);
         }
         
+        // Inject @ensures assertions before return (when --check-contracts is on)
+        if self.check_contracts && !forge.ensures.is_empty() {
+            for (i, ens) in forge.ensures.iter().enumerate() {
+                let cond_rv = self.lower_expr(ens);
+                let cond_op = self.rvalue_to_operand(cond_rv);
+                let msg = format!("postcondition #{} of '{}' violated", i, forge.name);
+                let instr = Instruction::Assert(cond_op, msg);
+                self.body.blocks.node_weight_mut(self.current_block).unwrap().instructions.push(instr);
+            }
+        }
+
         let block = self.body.blocks.node_weight_mut(self.current_block).unwrap();
         if block.terminator.is_none() {
             block.terminator = Some(Terminator::Return);

@@ -43,6 +43,7 @@ fn main() -> Result<()> {
 
     println!("Borrow checking...");
     let mut mir_lowerer = izel_mir::lower::MirLowerer::new();
+    mir_lowerer.check_contracts = session.options.check_contracts;
     let mut borrow_checker = izel_borrow::BorrowChecker::new();
     
     for item in &_ast.items {

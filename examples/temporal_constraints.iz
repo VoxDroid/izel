@@ -1,0 +1,52 @@
+// ⬡ IZEL — Temporal Constraints Example
+// Demonstrates @requires, @ensures, and #[invariant]
+
+// --- Preconditions with @requires ---
+
+@requires(n >= 0)
+forge factorial(n: u64) -> u64 {
+    given n == 0 { give 1 }
+    n * factorial(n - 1)
+}
+
+// --- Pre + Postconditions ---
+
+@requires(lo <= hi)
+@ensures(result >= lo and result <= hi)
+forge clamp(val: f64, lo: f64, hi: f64) -> f64 {
+    given val < lo { give lo }
+    given val > hi { give hi }
+    val
+}
+
+// --- Shape-level invariants ---
+
+#[invariant(self.width > 0.0 and self.height > 0.0)]
+shape Rect {
+    width: f64,
+    height: f64,
+}
+
+// All methods on Rect must preserve width > 0 and height > 0
+impl Rect {
+    forge area(self) -> f64 {
+        self.width * self.height
+    }
+    
+    forge scale(~self, factor: f64) {
+        self.width = self.width * factor;
+        self.height = self.height * factor;
+    }
+}
+
+// --- Usage ---
+
+forge main() {
+    let x = factorial(5);    // OK: 5 >= 0
+    // factorial(-1)          // ERROR: compile-time @requires violation
+    
+    let c = clamp(15.0, 0.0, 10.0);
+    
+    let r = Rect { width: 3.0, height: 4.0 };
+    let a = r.area();
+}

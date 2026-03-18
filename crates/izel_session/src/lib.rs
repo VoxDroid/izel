@@ -25,6 +25,10 @@ pub struct SessionOptions {
     /// Run the code after compilation using JIT.
     #[arg(long)]
     pub run: bool,
+
+    /// Enable runtime contract checking (inject @requires/@ensures assertions).
+    #[arg(long)]
+    pub check_contracts: bool,
 }
 
 pub struct Session {
@@ -36,3 +40,4 @@ impl Session {
         Self { options }
     }
 }
+

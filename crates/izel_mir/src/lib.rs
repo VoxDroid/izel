@@ -31,6 +31,8 @@ pub enum Instruction {
     Call(Place, String, Vec<Operand>),
     StorageLive(Local),
     StorageDead(Local),
+    /// Runtime contract assertion: if operand is false, abort with message.
+    Assert(Operand, String),
 }
 
 #[derive(Debug, Clone)]

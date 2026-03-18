@@ -58,6 +58,7 @@ pub struct Shape {
     pub generic_params: Vec<GenericParam>,
     pub fields: Vec<Field>,
     pub attributes: Vec<Attribute>,
+    pub invariants: Vec<Expr>,
     pub span: Span,
 }
 

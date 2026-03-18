@@ -108,6 +108,7 @@ impl<'a> Lowerer<'a> {
         let mut fields = Vec::new();
         let mut generic_params = Vec::new();
         let mut attributes = Vec::new();
+        let mut invariants = Vec::new();
 
         for child in &node.children {
             match child {
@@ -127,11 +128,22 @@ impl<'a> Lowerer<'a> {
             }
         }
 
+        // Extract #[invariant] attributes into invariants
+        let mut non_invariant_attrs = Vec::new();
+        for attr in attributes {
+            if attr.name == "invariant" {
+                invariants.extend(attr.args);
+            } else {
+                non_invariant_attrs.push(attr);
+            }
+        }
+
         ast::Shape {
             name,
             generic_params,
             fields,
-            attributes,
+            attributes: non_invariant_attrs,
+            invariants,
             span: node.span(),
         }
     }
