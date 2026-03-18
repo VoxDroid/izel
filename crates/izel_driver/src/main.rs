@@ -60,7 +60,7 @@ fn main() -> Result<()> {
     println!("Generating LLVM IR...");
     let context = inkwell::context::Context::create();
     let mut codegen = izel_codegen::Codegen::new(&context, "main", &source);
-    codegen.gen_source_file(&cst)?;
+    codegen.gen_module(&_ast)?;
 
     println!("--- LLVM IR ---\n{}", codegen.emit_llvm_ir());
     println!("---------------\n");

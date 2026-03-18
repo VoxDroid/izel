@@ -187,7 +187,12 @@ This document provides a granular, step-by-step roadmap for building the Izel co
 ---
 
 ## Phase 4: Standard Library & Runtime (Months 13–15)
-- [ ] **`std::prim`**: Integral math, floating point, bool logic.
+- [x] **Phase 4.1: Standard Library Primitives**
+    - [x] Parser support for `#[attribute]` syntax.
+    - [x] Implement `#[intrinsic]` attribute handling in type checker and codegen.
+    - [x] Create `library/std/prim.iz` with core methods for `i32`, `f64`, `bool`.
+    - [x] Support primitive `impl` blocks & method resolution in `izel_typeck`.
+    - [x] Verification tests for primitive methods and codegen.
 - [ ] **`std::iter`**: Full pipeline suite (`map`, `filter`, `fold`, `zip`, etc.).
 - [ ] **`std::collections`**:
     - [ ] `Vec<T>`, `HashMap<K, V>`, `BTreeMap<K, V>`.
