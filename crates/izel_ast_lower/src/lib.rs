@@ -477,7 +477,7 @@ impl<'a> Lowerer<'a> {
                            TokenKind::Slash => ast::BinaryOp::Div,
                            TokenKind::EqEq => ast::BinaryOp::Eq,
                            TokenKind::NotEq => ast::BinaryOp::Ne,
-                           TokenKind::Pipe => ast::BinaryOp::Pipeline,
+                             TokenKind::Pipe => return self.desugar_pipeline(lhs, rhs),
                             TokenKind::QuestionQuestion => return self.desugar_coalesce(lhs, rhs),
                             TokenKind::And => ast::BinaryOp::And,
                             TokenKind::Or => ast::BinaryOp::Or,
@@ -980,6 +980,26 @@ impl<'a> Lowerer<'a> {
         }
         ast::Attribute { name, args, span: node.span() }
     }
+
+    fn desugar_pipeline(&self, lhs: ast::Expr, rhs: ast::Expr) -> ast::Expr {
+        // x |> f     => f(x)
+        // x |> f(y)  => f(x, y)
+        match rhs {
+            ast::Expr::Call(callee, mut args) => {
+                // Prepend lhs to args
+                args.insert(0, lhs);
+                ast::Expr::Call(callee, args)
+            }
+            // If it's just an identifier or member access, treat it as a call with no args except lhs
+            ast::Expr::Ident(..) | ast::Expr::Path(..) | ast::Expr::Member(..) => {
+                ast::Expr::Call(Box::new(rhs), vec![lhs])
+            }
+            _ => {
+                // Fallback: This shouldn't happen in valid Izel, but we wrap it in a call just in case
+                ast::Expr::Call(Box::new(rhs), vec![lhs])
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1005,7 +1025,7 @@ mod tests {
     fn test_lower_attributes() {
         let source = "@proof forge f() {}";
         let tokens = tokenize(source);
-        let mut parser = izel_parser::Parser::new(tokens);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
         parser.source = source.to_string();
         let cst = parser.parse_decl();
         
@@ -1026,7 +1046,7 @@ mod tests {
     fn test_lower_attributes_with_args() {
         let source = "@requires(n > 0) forge f(n: i32) {}";
         let tokens = tokenize(source);
-        let mut parser = izel_parser::Parser::new(tokens);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
         parser.source = source.to_string();
         let cst = parser.parse_decl();
         
@@ -1048,7 +1068,7 @@ mod tests {
     fn test_lower_cascade_expr() {
         let source = "foo!";
         let tokens = tokenize(source);
-        let mut parser = izel_parser::Parser::new(tokens);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
         parser.source = source.to_string();
         let cst = parser.parse_expr(izel_parser::expr::Precedence::None);
         
@@ -1068,7 +1088,7 @@ mod tests {
     fn test_lower_macro_here() {
         let source = "here!()";
         let tokens = tokenize(source);
-        let mut parser = izel_parser::Parser::new(tokens);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
         parser.source = source.to_string();
         let cst = parser.parse_expr(izel_parser::expr::Precedence::None);
         
@@ -1088,7 +1108,7 @@ mod tests {
     fn test_lower_dual_decl() {
         let source = "dual shape JsonFormat<T> { forge encode(&self, val: &T) }";
         let tokens = tokenize(source);
-        let mut parser = izel_parser::Parser::new(tokens);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
         parser.source = source.to_string();
         let cst = parser.parse_decl();
         
@@ -1116,4 +1136,3 @@ mod tests {
         }
     }
 }
-

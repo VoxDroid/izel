@@ -15,8 +15,8 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, pos: 0, source: String::new() }
+    pub fn new(tokens: Vec<Token>, source: String) -> Self {
+        Self { tokens, pos: 0, source }
     }
 
     /// Parses the entire token stream into a SourceFile CST node.
@@ -955,8 +955,7 @@ mod tests {
             }
             tokens.push(t);
         }
-        let mut parser = Parser::new(tokens);
-        parser.source = src.to_string();
+        let mut parser = Parser::new(tokens, src.to_string());
         parser.parse_decl()
     }
 

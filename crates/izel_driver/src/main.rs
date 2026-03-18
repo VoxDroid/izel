@@ -26,7 +26,7 @@ fn main() -> Result<()> {
     }
 
     println!("Parsing CST...");
-    let mut parser = izel_parser::Parser::new(tokens);
+    let mut parser = izel_parser::Parser::new(tokens, source.to_string());
     let cst = parser.parse_source_file();
 
     println!("Resolving symbols...");

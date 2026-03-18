@@ -193,7 +193,7 @@ This document provides a granular, step-by-step roadmap for building the Izel co
     - [x] Create `library/std/prim.iz` with core methods for `i32`, `f64`, `bool`.
     - [x] Support primitive `impl` blocks & method resolution in `izel_typeck`.
     - [x] Verification tests for primitive methods and codegen.
-- [ ] **`std::iter`**: Full pipeline suite (`map`, `filter`, `fold`, `zip`, etc.).
+- [x] **`std::iter`**: Full pipeline suite (`map`, `filter`, `fold`, `take`, etc.).
 - [ ] **`std::collections`**:
     - [ ] `Vec<T>`, `HashMap<K, V>`, `BTreeMap<K, V>`.
 - [ ] **Async Native**:

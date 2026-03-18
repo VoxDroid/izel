@@ -387,8 +387,7 @@ mod tests {
             }
             tokens.push(t);
         }
-        let mut parser = Parser::new(tokens);
-        parser.source = src.to_string();
+        let mut parser = Parser::new(tokens, src.to_string());
         parser.parse_expr(min_prec)
     }
 

@@ -1,0 +1,105 @@
+// ⬡ IZEL — Standard Library Iterators
+// Provides the core Iterator weave and pipeline combinators for Izel.
+
+// The core Iterator weave
+weave Iterator {
+    // The type of the elements being iterated over.
+    type Item
+
+    // Advances the iterator and returns the next value.
+    // Returns `nil` when the iteration is finished.
+    forge next(&~self) -> ?Self::Item
+}
+
+// ---------------------------------------------------------
+// MAP
+// ---------------------------------------------------------
+
+shape Map<I, F> {
+    ~iter: I
+    f: F
+}
+
+impl<I, F, B> Iterator for Map<I, F> 
+  where I: Iterator, F: FnMut(I::Item) -> B 
+{
+    type Item = B
+
+    forge next(&~self) -> ?B {
+        let x = self.iter.next()?
+        Some((self.f)(x))
+    }
+}
+
+forge map<I, F>(iter: I, f: F) -> Map<I, F> {
+    Map { iter, f }
+}
+
+// ---------------------------------------------------------
+// FILTER
+// ---------------------------------------------------------
+
+shape Filter<I, P> {
+    ~iter: I
+    predicate: P
+}
+
+impl<I, P> Iterator for Filter<I, P>
+  where I: Iterator, P: FnMut(&I::Item) -> bool
+{
+    type Item = I::Item
+
+    forge next(&~self) -> ?I::Item {
+        loop {
+            let x = self.iter.next()?
+            given (self.predicate)(&x) {
+                give Some(x)
+            }
+        }
+    }
+}
+
+forge filter<I, P>(iter: I, predicate: P) -> Filter<I, P> {
+    Filter { iter, predicate }
+}
+
+// ---------------------------------------------------------
+// TAKE
+// ---------------------------------------------------------
+
+shape Take<I> {
+    ~iter: I
+    ~count: usize
+}
+
+impl<I> Iterator for Take<I> 
+  where I: Iterator 
+{
+    type Item = I::Item
+
+    forge next(&~self) -> ?I::Item {
+        given self.count == 0 {
+            give None
+        }
+        self.count = self.count - 1
+        self.iter.next()
+    }
+}
+
+forge take<I>(iter: I, count: usize) -> Take<I> {
+    Take { iter, count }
+}
+
+// ---------------------------------------------------------
+// FOLD (Consumer)
+// ---------------------------------------------------------
+
+forge fold<I, B, F>(~iter: I, init: B, f: F) -> B
+  where I: Iterator, F: FnMut(B, I::Item) -> B
+{
+    let ~accum = init
+    while let Some(x) = iter.next() {
+        accum = f(accum, x)
+    }
+    accum
+}

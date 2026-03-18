@@ -1,0 +1,43 @@
+// ⬡ IZEL — Iterator Pipeline Test
+// Testing the |> operator and std::iter combinators
+
+draw std::iter::*
+
+// A simple range iterator for testing
+shape Range {
+    ~current: i32
+    end: i32
+}
+
+impl Iterator for Range {
+    type Item = i32
+
+    forge next(&~self) -> ?i32 {
+        given self.current < self.end {
+            let val = self.current
+            self.current = self.current + 1
+            give Some(val)
+        }
+        None
+    }
+}
+
+forge range(start: i32, end: i32) -> Range {
+    Range { current: start, end }
+}
+
+forge main() -> void {
+    // 1. Create a range from 0 to 10
+    // 2. Filter even numbers: 0, 2, 4, 6, 8
+    // 3. Map to squares: 0, 4, 16, 36, 64
+    // 4. Take the first 3: 0, 4, 16
+    // 5. Fold (sum them up): 20
+    
+    let sum = range(0, 10)
+        |> filter(bind |x| x % 2 == 0)
+        |> map(bind |x| x * x)
+        |> take(3)
+        |> fold(0, bind |a, b| a + b)
+
+    // sum should be 20.
+}

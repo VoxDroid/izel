@@ -1744,7 +1744,7 @@ mod tests {
     fn test_witness_parsing_and_lowering() {
         let source = "@proof forge prove_nonzero(n: i32) -> Witness<i32> { raw n }";
         let tokens = tokenize(source);
-        let mut parser = izel_parser::Parser::new(tokens);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
         parser.source = source.to_string();
         let cst = parser.parse_decl();
         let lowerer = izel_ast_lower::Lowerer::new(source);
@@ -1951,7 +1951,7 @@ mod tests {
         // Parse a function with NonZero<i32> parameter and verify it lowers correctly
         let source = "forge divide(a: i32, b: NonZero<i32>) -> i32 { a }";
         let tokens = tokenize(source);
-        let mut parser = izel_parser::Parser::new(tokens);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
         parser.source = source.to_string();
         let cst = parser.parse_decl();
         let lowerer = izel_ast_lower::Lowerer::new(source);
@@ -2054,7 +2054,7 @@ mod tests {
         // Parse a shape with @invariant and verify invariants are populated
         let source = "@invariant(self.width > 0) shape Rect { width: f64, }";
         let tokens = tokenize(source);
-        let mut parser = izel_parser::Parser::new(tokens);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
         parser.source = source.to_string();
         let cst = parser.parse_decl();
         let lowerer = izel_ast_lower::Lowerer::new(source);
@@ -2081,7 +2081,7 @@ mod tests {
     fn test_check_dual_decl() {
         let source = "dual shape JsonFormat<T> { forge encode(&self, val: &T) -> String { \"test\" } }";
         let tokens = tokenize(source);
-        let mut parser = izel_parser::Parser::new(tokens);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
         parser.source = source.to_string();
         let cst = parser.parse_decl();
         
@@ -2143,7 +2143,7 @@ mod tests {
             }
         ";
         let tokens = tokenize(source);
-        let mut parser = izel_parser::Parser::new(tokens);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
         parser.source = source.to_string();
         let cst = parser.parse_source_file();
         let lowerer = izel_ast_lower::Lowerer::new(source);
