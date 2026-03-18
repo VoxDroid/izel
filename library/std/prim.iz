@@ -1,0 +1,26 @@
+// ⬡ IZEL — Standard Library Primitives
+// Provides core methods for built-in types.
+
+impl i32 {
+    #[intrinsic("i32_abs")]
+    forge abs(self) -> i32
+
+    #[intrinsic("i32_to_str")]
+    forge to_str(self) -> str
+}
+
+impl f64 {
+    #[intrinsic("f64_sqrt")]
+    forge sqrt(self) -> f64
+
+    #[intrinsic("f64_ceil")]
+    forge ceil(self) -> f64
+
+    #[intrinsic("f64_floor")]
+    forge floor(self) -> f64
+}
+
+impl bool {
+    #[intrinsic("bool_not")]
+    forge not(self) -> bool
+}

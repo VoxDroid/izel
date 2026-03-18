@@ -38,8 +38,8 @@ impl Parser {
     pub fn parse_decl(&mut self) -> SyntaxNode {
         let mut children = self.eat_trivia();
 
-        // Handle attributes (@attr or @attr(args))
-        if self.current_kind() == TokenKind::At {
+        // Handle attributes (@attr or @attr(args) or #[attr])
+        if self.current_kind() == TokenKind::At || self.current_kind() == TokenKind::Pound {
             children.push(SyntaxElement::Node(self.parse_attributes()));
             children.extend(self.eat_trivia().into_iter());
         }
@@ -863,7 +863,7 @@ impl Parser {
 
     fn parse_attributes(&mut self) -> SyntaxNode {
         let mut children = vec![];
-        while self.current_kind() == TokenKind::At {
+        while self.current_kind() == TokenKind::At || self.current_kind() == TokenKind::Pound {
             let start = self.pos;
             children.push(SyntaxElement::Node(self.parse_attribute()));
             children.extend(self.eat_trivia().into_iter());
@@ -876,29 +876,64 @@ impl Parser {
 
     fn parse_attribute(&mut self) -> SyntaxNode {
         let mut children = self.eat_trivia();
-        if self.current_kind() == TokenKind::At {
-            children.push(SyntaxElement::Token(self.bump())); // @
-            children.extend(self.eat_trivia().into_iter());
-            if self.is_naming_ident() {
-                children.push(SyntaxElement::Token(self.bump())); // name
-            }
-            children.extend(self.eat_trivia().into_iter());
-            if self.current_kind() == TokenKind::OpenParen {
-                children.push(SyntaxElement::Token(self.bump())); // (
-                while self.current_kind() != TokenKind::CloseParen
-                    && self.current_kind() != TokenKind::Eof
-                {
-                    children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
-                    children.extend(self.eat_trivia().into_iter());
-                    if self.current_kind() == TokenKind::Comma {
-                        children.push(SyntaxElement::Token(self.bump()));
+        match self.current_kind() {
+            TokenKind::At => {
+                children.push(SyntaxElement::Token(self.bump())); // @
+                children.extend(self.eat_trivia().into_iter());
+                if self.is_naming_ident() {
+                    children.push(SyntaxElement::Token(self.bump())); // name
+                }
+                children.extend(self.eat_trivia().into_iter());
+                if self.current_kind() == TokenKind::OpenParen {
+                    children.push(SyntaxElement::Token(self.bump())); // (
+                    while self.current_kind() != TokenKind::CloseParen
+                        && self.current_kind() != TokenKind::Eof
+                    {
+                        children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
                         children.extend(self.eat_trivia().into_iter());
+                        if self.current_kind() == TokenKind::Comma {
+                            children.push(SyntaxElement::Token(self.bump()));
+                            children.extend(self.eat_trivia().into_iter());
+                        }
+                    }
+                    if self.current_kind() == TokenKind::CloseParen {
+                        children.push(SyntaxElement::Token(self.bump())); // )
                     }
                 }
-                if self.current_kind() == TokenKind::CloseParen {
-                    children.push(SyntaxElement::Token(self.bump())); // )
+            }
+            TokenKind::Pound => {
+                children.push(SyntaxElement::Token(self.bump())); // #
+                children.extend(self.eat_trivia().into_iter());
+                if self.current_kind() == TokenKind::OpenBracket {
+                    children.push(SyntaxElement::Token(self.bump())); // [
+                    children.extend(self.eat_trivia().into_iter());
+                    if self.is_naming_ident() {
+                        children.push(SyntaxElement::Token(self.bump())); // name
+                    }
+                    children.extend(self.eat_trivia().into_iter());
+                    if self.current_kind() == TokenKind::OpenParen {
+                        children.push(SyntaxElement::Token(self.bump())); // (
+                        while self.current_kind() != TokenKind::CloseParen
+                            && self.current_kind() != TokenKind::Eof
+                        {
+                            children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+                            children.extend(self.eat_trivia().into_iter());
+                            if self.current_kind() == TokenKind::Comma {
+                                children.push(SyntaxElement::Token(self.bump()));
+                                children.extend(self.eat_trivia().into_iter());
+                            }
+                        }
+                        if self.current_kind() == TokenKind::CloseParen {
+                            children.push(SyntaxElement::Token(self.bump())); // )
+                        }
+                        children.extend(self.eat_trivia().into_iter());
+                    }
+                    if self.current_kind() == TokenKind::CloseBracket {
+                        children.push(SyntaxElement::Token(self.bump())); // ]
+                    }
                 }
             }
+            _ => {}
         }
         SyntaxNode::new(NodeKind::Attribute, children)
     }
@@ -930,5 +965,22 @@ mod tests {
         let node = parse_test("dual shape JsonFormat<T> { forge encode(&self, val: &T) }");
         assert_eq!(node.kind, NodeKind::DualDecl);
         assert!(node.children.len() > 6); // dual, shape, name, generics, {, forge...
+    }
+
+    #[test]
+    fn test_parse_bracket_attribute() {
+        let node = parse_test("#[intrinsic(\"i32_abs\")] forge abs(x: i32) -> i32");
+        assert_eq!(node.kind, NodeKind::ForgeDecl);
+        
+        let has_attr = node.children.iter().any(|child| {
+            if let SyntaxElement::Node(n) = child {
+                n.kind == NodeKind::Attributes && n.children.iter().any(|attr_child| {
+                    if let SyntaxElement::Node(an) = attr_child {
+                        an.kind == NodeKind::Attribute
+                    } else { false }
+                })
+            } else { false }
+        });
+        assert!(has_attr, "Should have Attribute node");
     }
 }

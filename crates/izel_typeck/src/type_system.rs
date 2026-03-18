@@ -126,4 +126,5 @@ pub struct Scheme {
     pub param_names: Vec<String>,
     pub requires: Vec<Expr>,
     pub ensures: Vec<Expr>,
+    pub intrinsic: Option<String>,
 }

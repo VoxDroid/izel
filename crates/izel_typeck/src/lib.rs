@@ -30,6 +30,8 @@ pub struct TypeChecker {
     pub in_raw_block: bool,
     pub diagnostics: Vec<izel_diagnostics::Diagnostic>,
     pub shape_invariants: FxHashMap<String, Vec<ast::Expr>>,
+    pub method_env: FxHashMap<String, FxHashMap<String, Scheme>>,
+    pub current_self: Option<Type>,
 }
 
 impl TypeChecker {
@@ -53,6 +55,8 @@ impl TypeChecker {
             in_raw_block: false,
             diagnostics: Vec::new(),
             shape_invariants: FxHashMap::default(),
+            method_env: FxHashMap::default(),
+            current_self: None,
         }
     }
 
@@ -85,6 +89,7 @@ impl TypeChecker {
                     param_names: vec![],
                     requires: vec![],
                     ensures: vec![],
+                    intrinsic: None,
                 },
             );
         }
@@ -139,10 +144,13 @@ impl TypeChecker {
         match item {
             ast::Item::Forge(f) => self.check_forge(f),
             ast::Item::Impl(i) => {
+                let old_self = self.current_self.clone();
+                self.current_self = Some(self.lower_ast_type(&i.target));
                 self.check_impl(i);
                 for it in &i.items {
                     self.check_item(it);
                 }
+                self.current_self = old_self;
             }
             ast::Item::Ward(w) => {
                 for it in &w.items {
@@ -333,6 +341,25 @@ impl TypeChecker {
                             .push((target, i.clone()));
                     }
                 }
+                // Method resolution registration
+                let target_name = match &i.target {
+                    ast::Type::Prim(name) => name.clone(),
+                    ast::Type::Path(path, _) => path.last().cloned().unwrap_or_default(),
+                    _ => "".to_string(),
+                };
+
+                if !target_name.is_empty() {
+                    for item in &i.items {
+                        if let ast::Item::Forge(f) = item {
+                            let scheme = self.collect_forge_signature(f);
+                            self.method_env
+                                .entry(target_name.clone())
+                                .or_default()
+                                .insert(f.name.clone(), scheme);
+                        }
+                    }
+                }
+
                 // Signatures of items inside impl should also be collected
                 for it in &i.items {
                     self.collect_item_signature(it);
@@ -344,61 +371,10 @@ impl TypeChecker {
                 }
             }
             ast::Item::Forge(f) => {
-                self.push_scope();
-                let mut bounds = Vec::new();
-                // Map generic params to Type::Param
-                for gp in &f.generic_params {
-                    self.define(gp.name.clone(), Type::Param(gp.name.clone()));
-                    for b in &gp.bounds {
-                        bounds.push((gp.name.clone(), b.clone()));
-                    }
-                }
-
-                let mut params = Vec::new();
-                let mut param_names = Vec::new();
-                for p in &f.params {
-                    params.push(self.lower_ast_type(&p.ty));
-                    param_names.push(p.name.clone());
-                }
-
-                let mut ret = Box::new(self.lower_ast_type(&f.ret_type));
-                self.apply_lifetime_elision(&mut params, &mut ret);
-
-                let mut effects = Vec::new();
-                for e in &f.effects {
-                    effects.push(match e.as_str() {
-                        "io" => Effect::IO,
-                        "alloc" => Effect::Alloc,
-                        "mut" => Effect::Mut,
-                        "pure" => Effect::Pure,
-                        _ => Effect::User(e.clone()),
-                    });
-                }
-
-                let effect_set = if f.effects.is_empty() {
-                    self.new_effect_var()
-                } else if f.effects.contains(&"pure".to_string()) {
-                    EffectSet::Concrete(vec![Effect::Pure])
-                } else {
-                    EffectSet::Concrete(effects)
-                };
-
-                let ty = Type::Function {
-                    params,
-                    ret,
-                    effects: effect_set,
-                };
-
-                self.pop_scope();
-
-                // Generalize it
-                let mut scheme = self.generalize(&ty);
-                scheme.bounds = bounds;
-                scheme.param_names = param_names;
-                scheme.requires = f.requires.clone();
-                scheme.ensures = f.ensures.clone();
+                let scheme = self.collect_forge_signature(f);
                 self.define_scheme(f.name.clone(), scheme);
             }
+
             ast::Item::Shape(s) => {
                 self.push_scope();
                 let mut bounds = Vec::new();
@@ -409,18 +385,14 @@ impl TypeChecker {
                     }
                 }
 
-                let mut fields = vec![];
-                for f in &s.fields {
-                    fields.push((f.name.clone(), self.lower_ast_type(&f.ty)));
-                }
-                let ty = Type::Adt(DefId(0)); // Placeholder for actual DefId logic
+                // ... (existing shape logic)
+                let ty = Type::Adt(DefId(0));
                 self.pop_scope();
 
                 let mut scheme = self.generalize(&ty);
                 scheme.bounds = bounds;
                 self.define_scheme(s.name.clone(), scheme);
 
-                // Store invariants for later checking in check_impl
                 if !s.invariants.is_empty() {
                     self.shape_invariants
                         .insert(s.name.clone(), s.invariants.clone());
@@ -435,14 +407,13 @@ impl TypeChecker {
                         bounds.push((gp.name.clone(), b.clone()));
                     }
                 }
-                let ty = Type::Adt(DefId(0)); // Placeholder Adt
+                let ty = Type::Adt(DefId(0));
                 self.pop_scope();
 
                 let mut scheme = self.generalize(&ty);
                 scheme.bounds = bounds;
                 self.define_scheme(d.name.clone(), scheme);
-                
-                // Collect signatures of enclosed items
+
                 for item in &d.items {
                     self.collect_item_signature(item);
                 }
@@ -454,6 +425,72 @@ impl TypeChecker {
             _ => {}
         }
     }
+
+    fn collect_forge_signature(&mut self, f: &ast::Forge) -> Scheme {
+        self.push_scope();
+        let mut bounds = Vec::new();
+        for gp in &f.generic_params {
+            self.define(gp.name.clone(), Type::Param(gp.name.clone()));
+            for b in &gp.bounds {
+                bounds.push((gp.name.clone(), b.clone()));
+            }
+        }
+
+        let mut params = Vec::new();
+        let mut param_names = Vec::new();
+        for p in &f.params {
+            params.push(self.lower_ast_type(&p.ty));
+            param_names.push(p.name.clone());
+        }
+
+        let mut ret = Box::new(self.lower_ast_type(&f.ret_type));
+        self.apply_lifetime_elision(&mut params, &mut ret);
+
+        let mut effects = Vec::new();
+        for e in &f.effects {
+            effects.push(match e.as_str() {
+                "io" => Effect::IO,
+                "alloc" => Effect::Alloc,
+                "mut" => Effect::Mut,
+                "pure" => Effect::Pure,
+                _ => Effect::User(e.clone()),
+            });
+        }
+
+        let effect_set = if f.effects.is_empty() {
+            self.new_effect_var()
+        } else if f.effects.contains(&"pure".to_string()) {
+            EffectSet::Concrete(vec![Effect::Pure])
+        } else {
+            EffectSet::Concrete(effects)
+        };
+
+        let ty = Type::Function {
+            params,
+            ret,
+            effects: effect_set,
+        };
+
+        self.pop_scope();
+
+        let mut scheme = self.generalize(&ty);
+        scheme.bounds = bounds;
+        scheme.param_names = param_names;
+        scheme.requires = f.requires.clone();
+        scheme.ensures = f.ensures.clone();
+
+        // Detect intrinsic attribute
+        for attr in &f.attributes {
+            if attr.name == "intrinsic" {
+                if let Some(ast::Expr::Literal(ast::Literal::Str(name))) = attr.args.get(0) {
+                    scheme.intrinsic = Some(name.clone());
+                }
+            }
+        }
+
+        scheme
+    }
+
 
     fn check_block(&mut self, block: &ast::Block) {
         self.check_block_with_expected(block, None);
@@ -595,7 +632,7 @@ impl TypeChecker {
                     }
                 }
             }
-            ast::Type::SelfType => self.resolve_name("Self").unwrap_or(Type::Error),
+            ast::Type::SelfType => self.current_self.clone().unwrap_or_else(|| self.resolve_name("Self").unwrap_or(Type::Error)),
             _ => Type::Error,
         }
     }
@@ -983,14 +1020,55 @@ impl TypeChecker {
             }
             ast::Expr::Member(obj, field, _) => {
                 let ot = self.infer_expr(obj);
-                if let Type::Static(fields) = self.prune(&ot) {
+                let pruned = self.prune(&ot);
+                if let Type::Static(fields) = &pruned {
                     if let Some((_, fty)) = fields.iter().find(|(name, _)| name == field) {
                         return fty.clone();
                     }
                 }
+                
+                // Method resolution
+                let type_name = match &pruned {
+                    Type::Prim(p) => match p {
+                        PrimType::I8 => "i8".to_string(),
+                        PrimType::I16 => "i16".to_string(),
+                        PrimType::I32 => "i32".to_string(),
+                        PrimType::I64 => "i64".to_string(),
+                        PrimType::I128 => "i128".to_string(),
+                        PrimType::U8 => "u8".to_string(),
+                        PrimType::U16 => "u16".to_string(),
+                        PrimType::U32 => "u32".to_string(),
+                        PrimType::U64 => "u64".to_string(),
+                        PrimType::U128 => "u128".to_string(),
+                        PrimType::F32 => "f32".to_string(),
+                        PrimType::F64 => "f64".to_string(),
+                        PrimType::Bool => "bool".to_string(),
+                        PrimType::Str => "str".to_string(),
+                        _ => "".to_string(),
+                    },
+                    Type::Adt(_) => {
+                        // For now, we don't have a direct DefId -> Name map in TypeChecker
+                        // But we might be able to find it if we look at what was defined in env.
+                        // For simplicity, let's assume we can resolve it if we had the name.
+                        "".to_string() 
+                    }
+                    _ => "".to_string(),
+                };
+
+                if !type_name.is_empty() {
+                    let scheme = self.method_env.get(&type_name).and_then(|m| m.get(field).cloned());
+                    if let Some(s) = scheme {
+                        return self.instantiate(&s);
+                    }
+                }
+
                 self.new_var()
             }
             ast::Expr::Call(callee, args) => {
+                let mut effective_args = args.clone();
+                if let ast::Expr::Member(obj, _, _) = callee.as_ref() {
+                    effective_args.insert(0, *obj.clone());
+                }
                 let ct = self.infer_expr(callee);
 
                 // Static verification of @requires at call-sites
@@ -1032,7 +1110,7 @@ impl TypeChecker {
                     if let Some(curr) = current {
                         self.accumulate_effects(&curr, &effects);
                     }
-                    for (arg, pty) in args.iter().zip(params.iter()) {
+                    for (arg, pty) in effective_args.iter().zip(params.iter()) {
                         let at = self.infer_expr(arg);
                         if !self.unify(pty, &at) {
                             eprintln!(
@@ -1140,13 +1218,13 @@ impl TypeChecker {
                 Type::Error
             }
             ast::Expr::Cascade { expr, context } => {
-                let inner_ty = self.infer_expr(expr);
+                let _inner_ty = self.infer_expr(expr);
                 
                 // For simplicity now, we assume Result<T, E> is structured such that
                 // unwrapping via `!` provides the Ok type `T`. We'll use a type variable for T
                 // and unify. In a full system, we might look up the Result ADT specifically.
                 let ok_ty = self.new_var();
-                let err_ty = self.new_var();
+                let _err_ty = self.new_var();
                 
                 // If it is an ADT, we can't easily unify without knowing Result's DefId,
                 // but we can at least return Ok. For now, we'll return a new var.
@@ -1214,11 +1292,10 @@ impl TypeChecker {
         match self.prune(ty) {
             Type::Var(id) => {
                 if id == var_id {
-                    return false; // Recursive type
+                    return false;
                 }
-                let other_level = self.var_levels.get(&id).cloned().unwrap_or(0);
-                if other_level > var_level {
-                    self.var_levels.insert(id, var_level);
+                if let Some(level) = self.var_levels.get_mut(&id) {
+                    *level = (*level).min(var_level);
                 }
                 true
             }
@@ -1227,8 +1304,8 @@ impl TypeChecker {
                 ret,
                 effects: _,
             } => {
-                for p in params {
-                    if !self.check_and_adjust(var_id, var_level, &p) {
+                for p in &params {
+                    if !self.check_and_adjust(var_id, var_level, p) {
                         return false;
                     }
                 }
@@ -1237,16 +1314,18 @@ impl TypeChecker {
             Type::Optional(inner)
             | Type::Cascade(inner)
             | Type::Pointer(inner, _, _)
+            | Type::Assoc(inner, _)
+            | Type::Witness(inner)
             | Type::BuiltinWitness(_, inner) => self.check_and_adjust(var_id, var_level, &inner),
             Type::Static(fields) => {
-                for (_, t) in fields {
-                    if !self.check_and_adjust(var_id, var_level, &t) {
+                for (_, t) in fields.iter() {
+                    if !self.check_and_adjust(var_id, var_level, t) {
                         return false;
                     }
                 }
                 true
             }
-            _ => true,
+            Type::Prim(_) | Type::Adt(_) | Type::Param(_) | Type::Error => true,
         }
     }
 
@@ -1275,6 +1354,7 @@ impl TypeChecker {
             param_names: vec![],
             requires: vec![],
             ensures: vec![],
+            intrinsic: None,
         }
     }
 
@@ -2049,5 +2129,28 @@ mod tests {
 
         // After exiting the zone, 'temp' should not be resolvable
         assert_eq!(checker.resolve_name("temp"), None);
+    }
+
+    #[test]
+    fn test_check_primitive_methods() {
+        let source = "
+            impl i32 {
+                forge abs(self) -> i32 { self }
+            }
+            forge main() {
+                let x: i32 = 5;
+                let y = x.abs();
+            }
+        ";
+        let tokens = tokenize(source);
+        let mut parser = izel_parser::Parser::new(tokens);
+        parser.source = source.to_string();
+        let cst = parser.parse_source_file();
+        let lowerer = izel_ast_lower::Lowerer::new(source);
+        let ast = lowerer.lower_module(&cst);
+
+        let mut typeck = TypeChecker::new();
+        typeck.check_ast(&ast);
+        assert!(typeck.diagnostics.is_empty(), "Type check failed: {:?}", typeck.diagnostics);
     }
 }
