@@ -360,7 +360,9 @@ impl TypeChecker {
         if let Some(expr) = &block.expr {
             let ty = self.infer_expr(expr);
             if let Some(et) = expected {
-                self.unify(&ty, et);
+                if !self.unify(et, &ty) {
+                    eprintln!("Error: Block return type mismatch. Expected {:?}, found {:?}", et, ty);
+                }
             }
         } else if let Some(et) = expected {
             // Empty block with expected return type must be Void
@@ -382,7 +384,9 @@ impl TypeChecker {
                 }
                 if let Some(init_expr) = init {
                     let it = self.infer_expr(init_expr);
-                    self.unify(&var_ty, &it);
+                    if !self.unify(&var_ty, &it) {
+                        eprintln!("Error: Type mismatch in 'let' initializer. Expected {:?}, found {:?}", var_ty, it);
+                    }
                 }
                 self.exit_level();
                 
@@ -509,6 +513,12 @@ impl TypeChecker {
             (t, Type::Cascade(c)) => self.unify(t, c),
             (Type::Optional(o), t) => self.unify(o, t),
             (Type::Cascade(c), t) => self.unify(c, t),
+            
+            // Witness promotion: 
+            // Value -> Witness: ONLY in proof mode
+            (Type::Witness(w), t) => if self.is_proof_mode() { self.unify(w, t) } else { false },
+            // Witness -> Value: Always allowed
+            (t, Type::Witness(w)) => self.unify(t, w),
             
             _ => {
                 false
@@ -656,6 +666,11 @@ impl TypeChecker {
         }
     }
 
+    fn is_proof_mode(&self) -> bool {
+        let res = self.in_raw_block || self.current_attributes.iter().any(|a| a.name == "proof");
+        res
+    }
+
     fn prune(&self, ty: &Type) -> Type {
         if let Type::Var(id) = ty {
             if let Some(bound) = self.substitutions.get(id) {
@@ -800,22 +815,14 @@ impl TypeChecker {
                      }
                      for (arg, pty) in args.iter().zip(params.iter()) {
                           let at = self.infer_expr(arg);
-                          self.unify(&at, pty);
+                          if !self.unify(pty, &at) {
+                               eprintln!("Error: Argument type mismatch. Expected {:?}, found {:?}", pty, at);
+                          }
                      }
                      *ret
                 } else {
                      for arg in args { self.infer_expr(arg); }
                      let res = self.new_var();
-                     
-                     // CHECK: Witness construction
-                     if let Type::Witness(_) = self.prune(&res) {
-                         let is_proof = self.current_attributes.iter().any(|a| a.name == "proof");
-                         if !is_proof && !self.in_raw_block {
-                             eprintln!("Error: Witness construction is only allowed in @proof functions or raw blocks");
-                             return Type::Error;
-                         }
-                     }
-                     
                      res
                 }
             }
@@ -865,11 +872,10 @@ impl TypeChecker {
                 Type::Prim(PrimType::Void)
             }
             ast::Expr::Raw(inner) => {
-                let old_raw = self.in_raw_block;
-                self.in_raw_block = true;
                 let ty = self.infer_expr(inner);
-                self.in_raw_block = old_raw;
-                ty
+                // raw x always produces a Witness<T> in proof context
+                // even in non-proof functions, 'raw' is the explicit bypass.
+                Type::Witness(Box::new(ty))
             }
             ast::Expr::Each { var, iter, body } => {
                 let _it = self.infer_expr(iter);

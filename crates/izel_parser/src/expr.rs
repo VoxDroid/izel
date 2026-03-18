@@ -139,6 +139,9 @@ impl Parser {
                 children.push(SyntaxElement::Token(self.bump()));
                 self.parse_bind_expr(children)
             }
+            TokenKind::Raw => {
+                self.parse_raw_expr()
+            }
             _ => {
                 children.push(SyntaxElement::Token(self.bump()));
                 SyntaxNode::new(NodeKind::Error, children)

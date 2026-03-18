@@ -1,0 +1,20 @@
+@proof forge prove_nonzero(n: i32) -> Witness<i32> {
+    raw n
+}
+
+forge divide(a: i32, b: Witness<i32>) -> i32 {
+    a / b
+}
+
+forge main() {
+    let x = 10;
+    let y = 5;
+    
+    // ERROR: Witness construction is only allowed in @proof functions or raw blocks
+    let w: Witness<i32> = y; 
+    
+    // OK: Explicit bypass
+    let w2: Witness<i32> = raw y;
+    
+    let z = divide(x, w2);
+}

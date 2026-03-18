@@ -514,11 +514,17 @@ impl<'a> Lowerer<'a> {
             }
             NodeKind::Block => ast::Expr::Block(self.lower_block(node)),
             NodeKind::RawExpr => {
-                let inner = &node.children[1]; // children[0] is 'raw' token
-                if let SyntaxElement::Node(n) = inner {
+                let mut inner_node = None;
+                for child in &node.children {
+                    if let SyntaxElement::Node(n) = child {
+                         inner_node = Some(n);
+                         break;
+                    }
+                }
+                if let Some(n) = inner_node {
                     ast::Expr::Raw(Box::new(self.lower_expr(n)))
                 } else {
-                    ast::Expr::Literal(ast::Literal::Nil) // Should not happen
+                    ast::Expr::Literal(ast::Literal::Nil)
                 }
             }
             NodeKind::StructLiteral => {

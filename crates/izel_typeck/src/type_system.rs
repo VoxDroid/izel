@@ -62,6 +62,8 @@ pub enum PrimType {
     Str,
     Void,
     None,
+    NonZero,
+    InBounds,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

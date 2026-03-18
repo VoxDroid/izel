@@ -22,8 +22,14 @@ impl Parser {
     pub fn parse_source_file(&mut self) -> SyntaxNode {
         let mut children = vec![];
         while self.current_kind() != TokenKind::Eof {
-            children.push(SyntaxElement::Node(self.parse_decl()));
+            let start_pos = self.pos;
+            let decl = self.parse_decl();
+            children.push(SyntaxElement::Node(decl));
             children.extend(self.eat_trivia().into_iter());
+            
+            if self.pos <= start_pos {
+                self.bump();
+            }
         }
         SyntaxNode::new(NodeKind::SourceFile, children)
     }
@@ -71,7 +77,7 @@ impl Parser {
             }
             TokenKind::Impl => {
                 children.push(SyntaxElement::Token(self.bump())); // impl
-                self.parse_impl_after_keyword(children)
+                self.parse_impl_after_keywords(children)
             }
             TokenKind::Type => {
                 children.push(SyntaxElement::Token(self.bump())); // type
@@ -479,7 +485,7 @@ impl Parser {
             
             while self.current_kind() != close && self.current_kind() != TokenKind::Eof {
                 let start = self.pos;
-                let arg = self.parse_expr(Precedence::None);
+                let arg = self.parse_expr(Precedence::Comparison);
                 children.push(SyntaxElement::Node(SyntaxNode::new(NodeKind::GenericArg, vec![SyntaxElement::Node(arg)])));
                 children.extend(self.eat_trivia().into_iter());
                 if self.current_kind() == TokenKind::Comma {
@@ -561,6 +567,12 @@ impl Parser {
                 children.extend(self.eat_trivia().into_iter());
                 if self.is_naming_ident() {
                     children.push(SyntaxElement::Token(self.bump())); // name
+                }
+                children.extend(self.eat_trivia().into_iter());
+                if self.current_kind() == TokenKind::Colon {
+                    children.push(SyntaxElement::Token(self.bump()));
+                    children.extend(self.eat_trivia().into_iter());
+                    children.push(SyntaxElement::Node(self.parse_type()));
                 }
                 children.extend(self.eat_trivia().into_iter());
                 if self.current_kind() == TokenKind::Equal {
