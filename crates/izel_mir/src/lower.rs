@@ -67,7 +67,7 @@ impl MirLowerer {
 
         let block = &mut self.body.blocks[self.current_block];
         if block.terminator.is_none() {
-            block.terminator = Some(Terminator::Return);
+            block.terminator = Some(Terminator::Return(None));
         }
 
         std::mem::replace(&mut self.body, MirBody::new())
@@ -133,12 +133,14 @@ impl MirLowerer {
         self.sealed_blocks.push(block);
     }
 
-    fn lower_block(&mut self, block: &HirBlock) {
+    fn lower_block(&mut self, block: &HirBlock) -> Rvalue {
         for stmt in &block.stmts {
             self.lower_stmt(stmt);
         }
         if let Some(expr) = &block.expr {
-            self.lower_expr(expr);
+            self.lower_expr(expr)
+        } else {
+            Rvalue::Use(Operand::Constant(Constant::Bool(false)))
         }
     }
 
@@ -180,6 +182,12 @@ impl MirLowerer {
                 let local = self.read_variable(*def_id, self.current_block);
                 Rvalue::Use(Operand::Move(local))
             }
+            HirExpr::Zone { name, body, .. } => {
+                self.body.blocks[self.current_block].instructions.push(Instruction::ZoneEnter(name.clone()));
+                let rv = self.lower_block(body);
+                self.body.blocks[self.current_block].instructions.push(Instruction::ZoneExit(name.clone()));
+                rv
+            }
             HirExpr::Binary(op, left, right, _) => {
                 let lr = self.lower_expr(left);
                 let l_op = self.rvalue_to_operand(lr);
@@ -192,19 +200,37 @@ impl MirLowerer {
                 };
                 Rvalue::BinaryOp(mir_op, l_op, r_op)
             }
-            HirExpr::Call(callee, args, _) => {
+            HirExpr::Call(callee, args, requires, _) => {
                 let mut operands = Vec::new();
                 for arg in args {
                     let rv = self.lower_expr(arg);
                     operands.push(self.rvalue_to_operand(rv));
                 }
+
+                // Emit runtime assertions for @requires
+                for req in requires {
+                    let req_rv = self.lower_expr(req);
+                    let req_op = self.rvalue_to_operand(req_rv);
+                    self.body.blocks[self.current_block]
+                        .instructions
+                        .push(Instruction::Assert(req_op, "precondition violation".to_string()));
+                }
+
+                let callee_name = if let HirExpr::Ident(_, _, _) = &**callee {
+                    "call_target".to_string()
+                } else {
+                    "unknown".to_string()
+                };
+
                 let local = self.new_local("call_tmp".to_string(), Type::Error);
-                self.body.blocks[self.current_block].instructions.push(Instruction::Call(local, "unknown".to_string(), operands));
+                self.body.blocks[self.current_block]
+                    .instructions
+                    .push(Instruction::Call(local, callee_name, operands));
                 Rvalue::Use(Operand::Move(local))
             }
             HirExpr::Return(expr) => {
                 if let Some(e) = expr {
-                    if let HirExpr::Call(callee, args, _) = &**e {
+                    if let HirExpr::Call(callee, args, _, _) = &**e {
                         // Check for TCO
                         let is_recursive = if let HirExpr::Ident(_, _, _) = &**callee { true } else { false };
                         if is_recursive {
@@ -230,10 +256,10 @@ impl MirLowerer {
                     }
                     let rv = self.lower_expr(e);
                     let op = self.rvalue_to_operand(rv);
-                    self.body.blocks[self.current_block].terminator = Some(Terminator::Return);
-                    Rvalue::Use(op)
+                    self.body.blocks[self.current_block].terminator = Some(Terminator::Return(Some(op)));
+                    Rvalue::Use(Operand::Constant(Constant::Int(0))) // DUMMY
                 } else {
-                    self.body.blocks[self.current_block].terminator = Some(Terminator::Return);
+                    self.body.blocks[self.current_block].terminator = Some(Terminator::Return(None));
                     Rvalue::Use(Operand::Constant(Constant::Int(0)))
                 }
             }
@@ -336,6 +362,7 @@ mod tests {
                 expr: Some(Box::new(HirExpr::Return(Some(Box::new(HirExpr::Call(
                     Box::new(HirExpr::Ident(DefId(0), Type::Error, Span::dummy())),
                     vec![HirExpr::Literal(izel_parser::ast::Literal::Int(0))],
+                    vec![],
                     Type::Error
                 )))))),
                 span: Span::dummy(),
@@ -363,5 +390,81 @@ mod tests {
             }
         }
         assert!(has_back_edge, "TCO should have created a back-edge to the header block");
+    }
+
+    #[test]
+    fn test_contract_assertion_emission() {
+        let mut lowerer = MirLowerer::new();
+        let i32_ty = Type::Prim(izel_typeck::type_system::PrimType::I32);
+        
+        // 1. Mock a call to 'f(n)' with @requires(n > 0)
+        let n_id = DefId(10);
+        let n_expr = HirExpr::Ident(n_id, i32_ty.clone(), izel_span::Span::dummy());
+        
+        let requires = vec![
+            HirExpr::Binary(
+                izel_parser::ast::BinaryOp::Gt,
+                Box::new(n_expr.clone()),
+                Box::new(HirExpr::Literal(izel_parser::ast::Literal::Int(0))),
+                Type::Prim(izel_typeck::type_system::PrimType::Bool),
+            )
+        ];
+        
+        let callee = Box::new(HirExpr::Ident(DefId(20), Type::Error, izel_span::Span::dummy()));
+        let call_expr = HirExpr::Call(callee, vec![n_expr], requires, i32_ty.clone());
+
+        // 2. Lower the call
+        lowerer.lower_expr(&call_expr);
+
+        // 3. Verify that the MIR contains an Assert instruction
+        let mir = &lowerer.body;
+        let mut found_assert = false;
+        for node in mir.blocks.node_indices() {
+            for inst in &mir.blocks[node].instructions {
+                if let Instruction::Assert(_, msg) = inst {
+                    if msg == "precondition violation" {
+                        found_assert = true;
+                    }
+                }
+            }
+        }
+        assert!(found_assert, "MIR should contain an Assert instruction for the @requires contract");
+    }
+
+    #[test]
+    fn test_zone_lowering() {
+        let mut lowerer = MirLowerer::new();
+        let i32_ty = Type::Prim(izel_typeck::type_system::PrimType::I32);
+        
+        let body = HirBlock {
+            stmts: vec![],
+            expr: Some(Box::new(HirExpr::Literal(izel_parser::ast::Literal::Int(42)))),
+            span: izel_span::Span::dummy(),
+        };
+        
+        let zone_expr = HirExpr::Zone {
+            name: "temp_arena".to_string(),
+            body,
+            ty: i32_ty.clone(),
+        };
+        
+        lowerer.lower_expr(&zone_expr);
+        
+        let mir = &lowerer.body;
+        let mut found_enter = false;
+        let mut found_exit = false;
+        
+        for node in mir.blocks.node_indices() {
+            for inst in &mir.blocks[node].instructions {
+                match inst {
+                    Instruction::ZoneEnter(name) if name == "temp_arena" => found_enter = true,
+                    Instruction::ZoneExit(name) if name == "temp_arena" => found_exit = true,
+                    _ => {}
+                }
+            }
+        }
+        
+        assert!(found_enter, "MIR should contain ZoneEnter instruction");
+        assert!(found_exit, "MIR should contain ZoneExit instruction");
     }
 }

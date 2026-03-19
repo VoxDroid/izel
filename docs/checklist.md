@@ -231,3 +231,39 @@ This document provides a granular, step-by-step roadmap for building the Izel co
 - [x] **The Big Leap**:
     - [x] Compile Izel-Lexer with Izel-Lexer.
     - [x] Verify bootstrap checksums.
+
+---
+
+## Phase 8: Advanced Type System & Safety (Next Steps)
+- [x] **Effect System**:
+    - [x] Declare effects (`!io`, `!net`, `!alloc`).
+    - [x] Implement effect unification and propagation in `izel_typeck`.
+    - [x] Verify effect boundaries and purity.
+- [x] **Witness Types**:
+    - [x] Implement `Witness<P>` zero-cost proof types.
+    - [x] Add built-in witnesses (`NonZero`, `InBounds`).
+    - [x] Enable custom witness construction in `raw` blocks.
+- [x] **Temporal Constraints**:
+    - [x] Implement `@requires` and `@ensures` attributes.
+    - [x] Symbolic verification for constant inputs.
+    - [x] Optimized runtime check emission for dynamic inputs.
+
+## Phase 9: Memory Infrastructure
+- [x] **Memory Zones**:
+    - [x] Implement `zone` block syntax and scoping.
+    - [x] Add `zone::allocator()` for arena-backed allocations.
+    - [x] Implement zone escape analysis in the borrow checker.
+- [x] **Duality Types**:
+    - [x] Implement `dual shape` keyword and derivations.
+    - [x] Verify round-trip laws (`decode(encode(x)) == x`).
+
+## Phase 10: Backend & Production
+- [ ] **LLVM Codegen**:
+    - [ ] Finalize `izel_codegen` with `inkwell`.
+    - [ ] Support object file and executable emission.
+- [ ] **Standard Library v0.1**:
+    - [ ] Complete `std::collections` (Vec, HashMap).
+    - [ ] Implement `flow` / `tide` async runtime.
+- [ ] **Ecosystem**:
+    - [ ] Self-host the full compiler backend.
+    - [ ] Public package registry integration.

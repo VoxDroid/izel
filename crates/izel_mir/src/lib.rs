@@ -43,7 +43,7 @@ pub enum Instruction {
 
 #[derive(Debug, Clone)]
 pub enum Terminator {
-    Return,
+    Return(Option<Operand>),
     Goto(BlockId),
     SwitchInt(Operand, Vec<(u128, BlockId)>, BlockId),
     Abort,

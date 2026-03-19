@@ -365,8 +365,10 @@ impl Parser {
 
     fn parse_dual_after_keyword(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
         children.extend(self.eat_trivia().into_iter());
+        let mut is_shape = false;
         if self.current_kind() == TokenKind::Shape {
             children.push(SyntaxElement::Token(self.bump())); // shape
+            is_shape = true;
         }
 
         children.extend(self.eat_trivia().into_iter());
@@ -386,7 +388,16 @@ impl Parser {
                 && self.current_kind() != TokenKind::Eof
             {
                 let start = self.pos;
-                children.push(SyntaxElement::Node(self.parse_decl()));
+                if is_shape {
+                    // Peek if it's a declaration (starting with forge, shape, etc)
+                    if matches!(self.current_kind(), TokenKind::Forge | TokenKind::Shape | TokenKind::Scroll | TokenKind::Dual | TokenKind::Weave | TokenKind::Ward | TokenKind::Impl | TokenKind::Type | TokenKind::Draw) {
+                        children.push(SyntaxElement::Node(self.parse_decl()));
+                    } else {
+                        children.push(SyntaxElement::Node(self.parse_field()));
+                    }
+                } else {
+                    children.push(SyntaxElement::Node(self.parse_decl()));
+                }
                 children.extend(self.eat_trivia().into_iter());
                 if self.pos == start {
                     self.bump();

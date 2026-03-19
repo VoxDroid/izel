@@ -101,7 +101,11 @@ fn collect_used_locals_instr(instr: &Instruction, used: &mut HashSet<Local>) {
 
 fn collect_used_locals_term(term: &Terminator, used: &mut HashSet<Local>) {
     match term {
-        Terminator::Return => {}
+        Terminator::Return(op) => {
+            if let Some(o) = op {
+                collect_used_locals_operand(o, used);
+            }
+        }
         Terminator::Goto(_) => {}
         Terminator::SwitchInt(op, _, _) => collect_used_locals_operand(op, used),
         Terminator::Abort => {}

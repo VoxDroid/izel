@@ -187,11 +187,17 @@ impl<'a> Lowerer<'a> {
         let mut generic_params = Vec::new();
         let mut items = Vec::new();
         let mut attributes = Vec::new();
+        let mut fields = Vec::new();
+        let mut is_shape = false;
 
         for child in &node.children {
             match child {
-                SyntaxElement::Token(token) if self.is_naming_ident(token.kind) => {
-                    name = self.source[token.span.lo.0 as usize..token.span.hi.0 as usize].to_string();
+                SyntaxElement::Token(token) => {
+                    if token.kind == TokenKind::Shape {
+                        is_shape = true;
+                    } else if self.is_naming_ident(token.kind) {
+                        name = self.source[token.span.lo.0 as usize..token.span.hi.0 as usize].to_string();
+                    }
                 }
                 SyntaxElement::Node(n) if n.kind == NodeKind::Attributes => {
                     attributes = self.lower_attributes(n);
@@ -199,12 +205,25 @@ impl<'a> Lowerer<'a> {
                 SyntaxElement::Node(n) if n.kind == NodeKind::GenericParams => {
                     generic_params = self.lower_generic_params(n);
                 }
+                SyntaxElement::Node(n) if n.kind == NodeKind::Field => {
+                    fields.push(self.lower_field(n));
+                }
                 SyntaxElement::Node(n) => {
                     // Try to lower any enclosed item like a forge declaration
                     items.extend(self.lower_item(n));
                 }
-                _ => {}
             }
+        }
+
+        if is_shape {
+            items.insert(0, ast::Item::Shape(ast::Shape {
+                name: name.clone(),
+                generic_params: generic_params.clone(),
+                fields,
+                attributes: vec![],
+                invariants: vec![],
+                span: node.span(),
+            }));
         }
 
         let mut dual = ast::Dual {
@@ -692,6 +711,25 @@ impl<'a> Lowerer<'a> {
                 }
                 ast::Expr::StructLiteral { path, fields }
             }
+            NodeKind::ZoneExpr => {
+                let mut name = String::new();
+                let mut body = None;
+                for child in &node.children {
+                    match child {
+                        SyntaxElement::Token(t) if t.kind == TokenKind::Ident => {
+                            name = self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
+                        }
+                        SyntaxElement::Node(n) if n.kind == NodeKind::Block => {
+                            body = Some(self.lower_block(n));
+                        }
+                        _ => {}
+                    }
+                }
+                ast::Expr::Zone {
+                    name,
+                    body: body.unwrap_or(ast::Block { stmts: vec![], expr: None, span: node.span() }),
+                }
+            }
             _ => ast::Expr::Literal(ast::Literal::Nil),
         }
     }
@@ -1147,6 +1185,45 @@ mod tests {
                 }
             }
             assert!(found_encode && found_decode, "Both encode and decode should be present");
+        } else {
+            panic!("Expected Dual item");
+        }
+    }
+
+    #[test]
+    fn test_lower_dual_shape_with_fields() {
+        let source = "dual shape Point { x: i32, y: i32 }";
+        let tokens = tokenize(source);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
+        parser.source = source.to_string();
+        let cst = parser.parse_decl();
+        
+        let lowerer = Lowerer::new(source);
+        let mut items = lowerer.lower_item(&cst);
+        let item = items.remove(0);
+        
+        if let ast::Item::Dual(d) = item {
+            assert_eq!(d.name, "Point");
+            // Should contain: Shape, encode, decode (3 items total)
+            assert_eq!(d.items.len(), 3);
+            
+            let mut has_shape = false;
+            let mut has_encode = false;
+            let mut has_decode = false;
+            
+            for inner in &d.items {
+                match inner {
+                    ast::Item::Shape(s) => {
+                        assert_eq!(s.name, "Point");
+                        assert_eq!(s.fields.len(), 2);
+                        has_shape = true;
+                    }
+                    ast::Item::Forge(f) if f.name == "encode" => has_encode = true,
+                    ast::Item::Forge(f) if f.name == "decode" => has_decode = true,
+                    _ => {}
+                }
+            }
+            assert!(has_shape && has_encode && has_decode);
         } else {
             panic!("Expected Dual item");
         }

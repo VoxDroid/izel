@@ -43,24 +43,24 @@ impl BorrowChecker {
         for node in mir.blocks.node_indices() {
             let block = &mir.blocks[node];
             for instr in &block.instructions {
-                if let Instruction::Assign(place, Rvalue::Ref(borrowed_place, is_mut)) = instr {
+                if let Instruction::Assign(place, Rvalue::Ref(borrowed_local, is_mut)) = instr {
                     let mut region = FxHashSet::default();
                     region.insert(node);
                     for (bn, live_set) in &liveness.live_out {
-                        if live_set.contains(&place.local) {
+                        if live_set.contains(place) {
                             region.insert(*bn);
                         }
                     }
                     for (bn, live_set) in &liveness.live_in {
-                        if live_set.contains(&place.local) {
+                        if live_set.contains(place) {
                             region.insert(*bn);
                         }
                     }
                     active_borrows
-                        .entry(borrowed_place.local)
+                        .entry(*borrowed_local)
                         .or_default()
                         .push(ActiveBorrow {
-                            local: borrowed_place.local,
+                            local: *borrowed_local,
                             is_mut: *is_mut,
                             region,
                         });
@@ -165,18 +165,18 @@ impl BorrowChecker {
                     }
                     Instruction::Assign(place, rvalue) => {
                         self.check_rvalue(rvalue, &mut initialized, mir, active_borrows, node);
-                        initialized.insert(place.local);
+                        initialized.insert(*place);
 
                         // If allocating a new object dynamically (e.g., calling an allocator) and we are inside a zone,
                         // we tag this local as zone-allocated.
                         // For pure analysis, any local created inside a zone that is a Pointer or Adt could be zone-allocated.
                         if let Some(current_zone) = active_zones.last() {
-                            let ty = &mir.locals[place.local.0].ty;
+                            let ty = &mir.locals[place.0].ty;
                             if let Type::Pointer(..) | Type::Adt(..) = ty {
                                 zone_allocations
                                     .entry(current_zone.clone())
                                     .or_default()
-                                    .insert(place.local);
+                                    .insert(*place);
                             }
                         }
                     }
@@ -184,15 +184,15 @@ impl BorrowChecker {
                         for arg in args {
                             self.check_operand(arg, &mut initialized, mir, active_borrows, node);
                         }
-                        initialized.insert(place.local);
+                        initialized.insert(*place);
 
                         if let Some(current_zone) = active_zones.last() {
-                            let ty = &mir.locals[place.local.0].ty;
+                            let ty = &mir.locals[place.0].ty;
                             if let Type::Pointer(..) | Type::Adt(..) = ty {
                                 zone_allocations
                                     .entry(current_zone.clone())
                                     .or_default()
-                                    .insert(place.local);
+                                    .insert(*place);
                             }
                         }
                     }
@@ -227,11 +227,11 @@ impl BorrowChecker {
             Rvalue::UnaryOp(_, op) => {
                 self.check_operand(op, initialized, mir, active_borrows, block)
             }
-            Rvalue::Ref(place, _) => {
-                if !initialized.contains(&place.local) {
+            Rvalue::Ref(local, _) => {
+                if !initialized.contains(local) {
                     self.errors.push(format!(
                         "Cannot borrow uninitialized or moved variable: {}",
-                        mir.locals[place.local.0].name
+                        mir.locals[local.0].name
                     ));
                 }
             }
@@ -247,34 +247,34 @@ impl BorrowChecker {
         block: izel_mir::BlockId,
     ) {
         match op {
-            Operand::Move(place) | Operand::Copy(place) => {
-                if !initialized.contains(&place.local) {
+            Operand::Move(local) | Operand::Copy(local) => {
+                if !initialized.contains(local) {
                     self.errors.push(format!(
                         "Use of uninitialized or moved variable: {}",
-                        mir.locals[place.local.0].name
+                        mir.locals[local.0].name
                     ));
                 }
 
                 // Check if moving borrowed data
                 if let Operand::Move(_) = op {
-                    if let Some(borrows) = active_borrows.get(&place.local) {
+                    if let Some(borrows) = active_borrows.get(local) {
                         if borrows.iter().any(|b| b.region.contains(&block)) {
                             self.errors.push(format!(
                                 "Cannot move {} because it is currently borrowed",
-                                mir.locals[place.local.0].name
+                                mir.locals[local.0].name
                             ));
                         }
                     }
                 }
 
-                let ty = &mir.locals[place.local.0].ty;
+                let ty = &mir.locals[local.0].ty;
                 if !self.is_type_copyable(ty) {
                     if let Operand::Move(_) = op {
-                        initialized.remove(&place.local);
+                        initialized.remove(local);
                     } else if let Operand::Copy(_) = op {
                         self.errors.push(format!(
                             "Cannot copy non-copyable type {:?} for variable {}",
-                            ty, mir.locals[place.local.0].name
+                            ty, mir.locals[local.0].name
                         ));
                     }
                 }
@@ -348,15 +348,15 @@ impl LivenessAnalysis {
 
         for instr in &block.instructions {
             match instr {
-                Instruction::Assign(place, rvalue) => {
+                Instruction::Assign(local, rvalue) => {
                     Self::get_rvalue_uses(rvalue, &mut uses, &defs);
-                    defs.insert(place.local);
+                    defs.insert(*local);
                 }
-                Instruction::Call(place, _, args) => {
+                Instruction::Call(local, _, args) => {
                     for arg in args {
                         Self::get_operand_use(arg, &mut uses, &defs);
                     }
-                    defs.insert(place.local);
+                    defs.insert(*local);
                 }
                 _ => {}
             }
@@ -382,9 +382,9 @@ impl LivenessAnalysis {
                 Self::get_operand_use(r, uses, defs);
             }
             Rvalue::UnaryOp(_, op) => Self::get_operand_use(op, uses, defs),
-            Rvalue::Ref(p, _) => {
-                if !defs.contains(&p.local) {
-                    uses.insert(p.local);
+            Rvalue::Ref(local, _) => {
+                if !defs.contains(local) {
+                    uses.insert(*local);
                 }
             }
         }
@@ -392,9 +392,9 @@ impl LivenessAnalysis {
 
     fn get_operand_use(op: &Operand, uses: &mut FxHashSet<Local>, defs: &FxHashSet<Local>) {
         match op {
-            Operand::Copy(p) | Operand::Move(p) => {
-                if !defs.contains(&p.local) {
-                    uses.insert(p.local);
+            Operand::Copy(local) | Operand::Move(local) => {
+                if !defs.contains(local) {
+                    uses.insert(*local);
                 }
             }
             _ => {}
@@ -431,18 +431,18 @@ mod tests {
         let block = mir.blocks.node_weight_mut(mir.entry).unwrap();
         // x = 1
         block.instructions.push(Instruction::Assign(
-            Place { local: local0 },
+            local0,
             Rvalue::Use(Operand::Constant(izel_mir::Constant::Int(1))),
         ));
         // y = move x
         block.instructions.push(Instruction::Assign(
-            Place { local: local1 },
-            Rvalue::Use(Operand::Move(Place { local: local0 })),
+            local1,
+            Rvalue::Use(Operand::Move(local0)),
         ));
         // z = move x (ERROR)
         block.instructions.push(Instruction::Assign(
-            Place { local: Local(2) },
-            Rvalue::Use(Operand::Move(Place { local: local0 })),
+            local2,
+            Rvalue::Use(Operand::Move(local0)),
         ));
 
         let mut bc = BorrowChecker::new();
@@ -481,18 +481,18 @@ mod tests {
         let block = mir.blocks.node_weight_mut(mir.entry).unwrap();
         // x = 1
         block.instructions.push(Instruction::Assign(
-            Place { local: x },
+            x,
             Rvalue::Use(Operand::Constant(izel_mir::Constant::Int(1))),
         ));
         // y = &~x (mutable borrow)
         block.instructions.push(Instruction::Assign(
-            Place { local: y },
-            Rvalue::Ref(Place { local: x }, true),
+            y,
+            Rvalue::Ref(x, true),
         ));
         // z = &x (immutable borrow - CLASH)
         block.instructions.push(Instruction::Assign(
-            Place { local: z },
-            Rvalue::Ref(Place { local: x }, false),
+            z,
+            Rvalue::Ref(x, false),
         ));
 
         let mut bc = BorrowChecker::new();
@@ -525,18 +525,18 @@ mod tests {
         let block = mir.blocks.node_weight_mut(mir.entry).unwrap();
         // x = ADT
         block.instructions.push(Instruction::Assign(
-            Place { local: x },
+            x,
             Rvalue::Use(Operand::Constant(izel_mir::Constant::Int(1))),
         ));
         // y = &x (borrow)
         block.instructions.push(Instruction::Assign(
-            Place { local: y },
-            Rvalue::Ref(Place { local: x }, false),
+            y,
+            Rvalue::Ref(x, false),
         ));
         // z = move x (ERROR: x is borrowed)
         block.instructions.push(Instruction::Assign(
-            Place { local: Local(2) },
-            Rvalue::Use(Operand::Move(Place { local: x })),
+            Local(2),
+            Rvalue::Use(Operand::Move(x)),
         ));
 
         let mut bc = BorrowChecker::new();
@@ -600,7 +600,7 @@ mod tests {
             .unwrap()
             .instructions
             .push(Instruction::Assign(
-                Place { local: alloc_local },
+                alloc_local,
                 Rvalue::Use(Operand::Constant(izel_mir::Constant::Int(1))), // Dummy alloc
             ));
         mir.blocks
@@ -608,8 +608,8 @@ mod tests {
             .unwrap()
             .instructions
             .push(Instruction::Assign(
-                Place { local: out_local },
-                Rvalue::Ref(Place { local: alloc_local }, false),
+                out_local,
+                Rvalue::Ref(alloc_local, false),
             ));
         mir.blocks.node_weight_mut(b2).unwrap().terminator = Some(Terminator::Goto(b3));
         mir.blocks.add_edge(b2, b3, ControlFlow::Unconditional);
@@ -625,8 +625,8 @@ mod tests {
             .unwrap()
             .instructions
             .push(Instruction::Assign(
-                Place { local: Local(2) },
-                Rvalue::Use(Operand::Copy(Place { local: out_local })), // use y
+                Local(2),
+                Rvalue::Use(Operand::Copy(out_local)), // use y
             ));
         mir.locals.push(LocalData {
             name: "z".into(),
@@ -698,7 +698,7 @@ mod tests {
             .unwrap()
             .instructions
             .push(Instruction::Assign(
-                Place { local: alloc_local },
+                alloc_local,
                 Rvalue::Use(Operand::Constant(izel_mir::Constant::Int(1))), // Dummy alloc
             ));
         mir.blocks
@@ -706,16 +706,16 @@ mod tests {
             .unwrap()
             .instructions
             .push(Instruction::Assign(
-                Place { local: ref_local },
-                Rvalue::Ref(Place { local: alloc_local }, false),
+                ref_local,
+                Rvalue::Ref(alloc_local, false),
             ));
         mir.blocks
             .node_weight_mut(b2)
             .unwrap()
             .instructions
             .push(Instruction::Assign(
-                Place { local: Local(2) },
-                Rvalue::Use(Operand::Copy(Place { local: ref_local })), // use y INSIDE zone
+                Local(2),
+                Rvalue::Use(Operand::Copy(ref_local)), // use y INSIDE zone
             ));
         mir.locals.push(LocalData {
             name: "z".into(),

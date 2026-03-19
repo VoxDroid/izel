@@ -12,15 +12,40 @@ impl HirLowerer {
     }
 
     pub fn lower_module(&self, module: &ast::Module) -> HirModule {
-        HirModule {
-            items: module.items.iter().filter_map(|item| self.lower_item(item)).collect(),
+        let mut items = Vec::new();
+        for item in &module.items {
+            self.lower_item_to_vec(item, &mut items);
+        }
+        HirModule { items }
+    }
+
+    fn lower_item_to_vec(&self, item: &ast::Item, items: &mut Vec<HirItem>) {
+        match item {
+            ast::Item::Forge(f) => items.push(HirItem::Forge(self.lower_forge(f))),
+            ast::Item::Shape(s) => items.push(HirItem::Shape(self.lower_shape(s))),
+            ast::Item::Scroll(s) => items.push(HirItem::Scroll(self.lower_scroll(s))),
+            ast::Item::Dual(d) => {
+                for inner in &d.items {
+                    self.lower_item_to_vec(inner, items);
+                }
+            }
+            _ => {}
         }
     }
 
-    fn lower_item(&self, item: &ast::Item) -> Option<HirItem> {
-        match item {
-            ast::Item::Forge(f) => Some(HirItem::Forge(self.lower_forge(f))),
-            _ => None,
+    fn lower_shape(&self, shape: &ast::Shape) -> HirShape {
+        HirShape {
+            name: shape.name.clone(),
+            def_id: izel_resolve::DefId(4), // Mock
+            span: shape.span,
+        }
+    }
+
+    fn lower_scroll(&self, scroll: &ast::Scroll) -> HirScroll {
+        HirScroll {
+            name: scroll.name.clone(),
+            def_id: izel_resolve::DefId(5), // Mock
+            span: scroll.span,
         }
     }
 
@@ -85,6 +110,13 @@ impl HirLowerer {
             ast::Expr::Call(callee, args) => HirExpr::Call(
                 Box::new(self.lower_expr(callee)),
                 args.iter().map(|a| self.lower_expr(a)).collect(),
+                vec![], // requires (to be populated by resolver)
+                Type::Error,
+            ),
+            ast::Expr::Member(inner, _name, span) => HirExpr::Call(
+                Box::new(HirExpr::Ident(izel_resolve::DefId(6), Type::Error, *span)), // Mock for member access as call
+                vec![self.lower_expr(inner)],
+                vec![],
                 Type::Error,
             ),
             ast::Expr::Given { cond, then_block, else_expr } => HirExpr::Given {
@@ -97,6 +129,13 @@ impl HirLowerer {
                 cond: Box::new(self.lower_expr(cond)),
                 body: self.lower_block(body),
             },
+            ast::Expr::Return(e) => HirExpr::Return(Some(Box::new(self.lower_expr(e)))),
+            ast::Expr::Zone { name, body } => HirExpr::Zone {
+                name: name.clone(),
+                body: self.lower_block(body),
+                ty: Type::Error,
+            },
+            ast::Expr::StructLiteral { .. } => HirExpr::Literal(ast::Literal::Nil), // Stub
             _ => HirExpr::Literal(ast::Literal::Nil),
         }
     }

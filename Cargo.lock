@@ -515,8 +515,10 @@ dependencies = [
  "anyhow",
  "inkwell",
  "izel_lexer",
+ "izel_mir",
  "izel_parser",
  "izel_span",
+ "izel_typeck",
  "tracing",
 ]
 

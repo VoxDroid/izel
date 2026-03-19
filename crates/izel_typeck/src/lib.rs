@@ -455,7 +455,15 @@ impl TypeChecker {
         for e in &f.effects {
             effects.push(match e.as_str() {
                 "io" => Effect::IO,
+                "net" => Effect::Net,
                 "alloc" => Effect::Alloc,
+                "panic" => Effect::Panic,
+                "unsafe" => Effect::Unsafe,
+                "time" => Effect::Time,
+                "rand" => Effect::Rand,
+                "env" => Effect::Env,
+                "ffi" => Effect::Ffi,
+                "thread" => Effect::Thread,
                 "mut" => Effect::Mut,
                 "pure" => Effect::Pure,
                 _ => Effect::User(e.clone()),
@@ -853,15 +861,20 @@ impl TypeChecker {
                     self.add_single_effect(&tail, e);
                 }
             }
-            EffectSet::Concrete(v) => {
-                if !v.contains(&e) {
-                    // TODO: This should probably be a diagnostic if we're checking against a signature
-                    // For now, we just don't add it if it's not allowed
-                }
+            EffectSet::Concrete(_) | EffectSet::Param(_) => {
+                // Cannot add to fixed sets or parameters during inference.
+                // These are usually checked during unification.
             }
-            EffectSet::Param(_) => {
-                // Cannot add to a fixed parameter
-            }
+        }
+    }
+
+    pub fn has_effect(&self, set: &EffectSet, target: &Effect) -> bool {
+        let set = self.prune_effects(set);
+        match set {
+            EffectSet::Concrete(v) => v.contains(target) || v.contains(&Effect::Pure),
+            EffectSet::Row(vals, tail) => vals.contains(target) || self.has_effect(&tail, target),
+            EffectSet::Var(_) => false,
+            EffectSet::Param(_) => false,
         }
     }
 
@@ -2166,5 +2179,101 @@ mod tests {
         let mut typeck = TypeChecker::new();
         typeck.check_ast(&ast);
         assert!(typeck.diagnostics.is_empty(), "Type check failed: {:?}", typeck.diagnostics);
+    }
+    #[test]
+    fn test_effect_inference_and_verification() {
+        let mut tc = TypeChecker::new();
+        use izel_span::Span;
+        
+        // 1. Define a function with !io effect
+        let io_ty = Type::Function {
+            params: vec![],
+            ret: Box::new(Type::Prim(PrimType::Void)),
+            effects: EffectSet::Concrete(vec![Effect::IO]),
+        };
+        tc.define("print_hi".to_string(), io_ty);
+
+        // 2. Define a function with !net effect
+        let net_ty = Type::Function {
+            params: vec![],
+            ret: Box::new(Type::Prim(PrimType::Void)),
+            effects: EffectSet::Concrete(vec![Effect::Net]),
+        };
+        tc.define("fetch_data".to_string(), net_ty);
+
+        // 3. Check an unannotated function that calls both
+        // forge wrapper() { print_hi(); fetch_data(); }
+        let body = ast::Block {
+            stmts: vec![
+                ast::Stmt::Expr(ast::Expr::Call(
+                    Box::new(ast::Expr::Ident("print_hi".to_string(), Span::dummy())),
+                    vec![],
+                )),
+                ast::Stmt::Expr(ast::Expr::Call(
+                    Box::new(ast::Expr::Ident("fetch_data".to_string(), Span::dummy())),
+                    vec![],
+                )),
+            ],
+            expr: None,
+            span: Span::dummy(),
+        };
+
+        let wrapper_effects = tc.new_effect_var();
+        tc.current_effects.push(wrapper_effects.clone());
+        tc.check_block(&body);
+        let collected = tc.current_effects.pop().unwrap();
+
+        // Should have accumulated both IO and Net
+        assert!(tc.has_effect(&collected, &Effect::IO), "Should have accumulated IO effect");
+        assert!(tc.has_effect(&collected, &Effect::Net), "Should have accumulated Net effect");
+
+        // 4. Verify that a 'pure' function cannot call an effectful one
+        let mut tc_pure = TypeChecker::new();
+        tc_pure.define("print_hi".to_string(), Type::Function {
+            params: vec![],
+            ret: Box::new(Type::Prim(PrimType::Void)),
+            effects: EffectSet::Concrete(vec![Effect::IO]),
+        });
+
+        let pure_sig = EffectSet::Concrete(vec![Effect::Pure]);
+        let body_eff = tc_pure.new_effect_var();
+        tc_pure.current_effects.push(body_eff.clone());
+        
+        // Call print_hi in the body
+        tc_pure.infer_expr(&ast::Expr::Call(
+            Box::new(ast::Expr::Ident("print_hi".to_string(), Span::dummy())),
+            vec![],
+        ));
+
+        let collected_pure = tc_pure.current_effects.pop().unwrap();
+        // This unification should fail
+        assert!(!tc_pure.unify_effects(&collected_pure, &pure_sig), "Pure function should NOT allow IO effect");
+    }
+    #[test]
+    fn test_witness_system() {
+        let mut tc = TypeChecker::new();
+        let i32_ty = Type::Prim(PrimType::I32);
+        let nz_ty = Type::BuiltinWitness(BuiltinWitness::NonZero, Box::new(i32_ty.clone()));
+
+        // 1. Normal code cannot construct NonZero
+        tc.in_raw_block = false;
+        assert!(!tc.unify(&nz_ty, &i32_ty), "Should not construct NonZero from i32 in normal scope");
+
+        // 2. Raw block can construct NonZero
+        tc.in_raw_block = true;
+        assert!(tc.unify(&nz_ty, &i32_ty), "Should allow construction of NonZero in raw block");
+
+        // 3. Normal code can EXTRACT i32 from NonZero
+        tc.in_raw_block = false;
+        assert!(tc.unify(&i32_ty, &nz_ty), "Should allow extracting i32 from NonZero in normal scope");
+
+        // 4. #[proof] attribute enables construction
+        let mut tc2 = TypeChecker::new();
+        tc2.current_attributes = vec![ast::Attribute {
+            name: "proof".to_string(),
+            args: vec![],
+            span: izel_span::Span::dummy(),
+        }];
+        assert!(tc2.unify(&nz_ty, &i32_ty), "Should allow construction of NonZero in #[proof] function");
     }
 }

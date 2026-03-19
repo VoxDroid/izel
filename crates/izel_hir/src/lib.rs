@@ -81,7 +81,7 @@ pub enum HirExpr {
     Ident(DefId, Type, Span),
     Binary(ast::BinaryOp, Box<HirExpr>, Box<HirExpr>, Type),
     Unary(ast::UnaryOp, Box<HirExpr>, Type),
-    Call(Box<HirExpr>, Vec<HirExpr>, Type),
+    Call(Box<HirExpr>, Vec<HirExpr>, Vec<HirExpr>, Type),
     Given {
         cond: Box<HirExpr>,
         then_block: HirBlock,
@@ -93,4 +93,9 @@ pub enum HirExpr {
         body: HirBlock,
     },
     Return(Option<Box<HirExpr>>),
+    Zone {
+        name: String,
+        body: HirBlock,
+        ty: Type,
+    },
 }

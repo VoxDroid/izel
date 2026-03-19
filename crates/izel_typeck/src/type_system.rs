@@ -104,7 +104,15 @@ pub enum EffectSet {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Effect {
     IO,
+    Net,
     Alloc,
+    Panic,
+    Unsafe,
+    Time,
+    Rand,
+    Env,
+    Ffi,
+    Thread,
     Mut,
     Pure,
     User(String),
