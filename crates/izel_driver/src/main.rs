@@ -24,15 +24,24 @@ fn main() -> Result<()> {
             }
             izel_session::Command::Deps { manifest_path } => {
                 let toml_str = std::fs::read_to_string(manifest_path)?;
-                let manifest = izel_pm::parse_manifest(&toml_str).map_err(|e| anyhow::anyhow!(e))?;
-                println!("Loaded manifest for package: {} v{}", manifest.package.name, manifest.package.version);
-                izel_pm::resolve_dependencies(&manifest.dependencies).map_err(|e| anyhow::anyhow!(e))?;
+                let manifest =
+                    izel_pm::parse_manifest(&toml_str).map_err(|e| anyhow::anyhow!(e))?;
+                println!(
+                    "Loaded manifest for package: {} v{}",
+                    manifest.package.name, manifest.package.version
+                );
+                izel_pm::resolve_dependencies(&manifest.dependencies)
+                    .map_err(|e| anyhow::anyhow!(e))?;
                 return Ok(());
             }
         }
     }
 
-    let input_path = session.options.input.as_ref().expect("Input file required for compilation");
+    let input_path = session
+        .options
+        .input
+        .as_ref()
+        .expect("Input file required for compilation");
     let source = std::fs::read_to_string(input_path)?;
     let source_id = izel_span::SourceId(0);
     let mut lexer = izel_lexer::Lexer::new(&source, source_id);
@@ -61,23 +70,29 @@ fn main() -> Result<()> {
     let _ast = ast_lowerer.lower_module(&cst);
 
     println!("Type checking...");
-    let mut typeck = izel_typeck::TypeChecker::new();
+    let mut typeck = izel_typeck::TypeChecker::with_builtins();
     typeck.check_ast(&_ast);
 
     if !typeck.diagnostics.is_empty() {
+        let mut source_map = izel_span::SourceMap::default();
+        source_map.add(input_path.to_string_lossy().to_string(), source.clone());
         for diag in &typeck.diagnostics {
-            eprintln!("Type Error: {}", diag.message);
+            izel_diagnostics::emit(&source_map, diag);
         }
         std::process::exit(1);
     }
+
+    println!("Lowering AST to HIR...");
+    let hir_lowerer = izel_hir::lower::HirLowerer::new();
+    let hir_module = hir_lowerer.lower_module(&_ast);
 
     println!("Borrow checking...");
     let mut mir_lowerer = izel_mir::lower::MirLowerer::new();
     mir_lowerer.check_contracts = session.options.check_contracts;
     let mut borrow_checker = izel_borrow::BorrowChecker::new();
 
-    for item in &_ast.items {
-        if let izel_parser::ast::Item::Forge(f) = item {
+    for item in &hir_module.items {
+        if let izel_hir::HirItem::Forge(f) = item {
             let mir = mir_lowerer.lower_forge(f);
             if let Err(errors) = borrow_checker.check(&mir) {
                 for err in errors {

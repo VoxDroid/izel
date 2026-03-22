@@ -1,0 +1,11 @@
+[package]
+name = "izel_doc"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description.workspace = true
+
+[dependencies]
+izel_parser = { path = "../izel_parser", version = "0.1.0" }

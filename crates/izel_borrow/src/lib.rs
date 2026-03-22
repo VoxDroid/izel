@@ -15,6 +15,12 @@ pub struct ActiveBorrow {
     pub region: FxHashSet<izel_mir::BlockId>, // Simple NLL region as a set of blocks
 }
 
+impl Default for BorrowChecker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BorrowChecker {
     pub fn new() -> Self {
         Self {
@@ -199,13 +205,8 @@ impl BorrowChecker {
                     _ => {}
                 }
             }
-            if let Some(term) = &block.terminator {
-                match term {
-                    Terminator::SwitchInt(op, _, _) => {
-                        self.check_operand(op, &mut initialized, mir, active_borrows, node);
-                    }
-                    _ => {}
-                }
+            if let Some(Terminator::SwitchInt(op, _, _)) = &block.terminator {
+                self.check_operand(op, &mut initialized, mir, active_borrows, node);
             }
         }
     }
@@ -362,13 +363,8 @@ impl LivenessAnalysis {
             }
         }
 
-        if let Some(term) = &block.terminator {
-            match term {
-                Terminator::SwitchInt(op, _, _) => {
-                    Self::get_operand_use(op, &mut uses, &defs);
-                }
-                _ => {}
-            }
+        if let Some(Terminator::SwitchInt(op, _, _)) = &block.terminator {
+            Self::get_operand_use(op, &mut uses, &defs);
         }
 
         (uses, defs)
@@ -405,7 +401,7 @@ impl LivenessAnalysis {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use izel_mir::{Instruction, Local, LocalData, MirBody, Operand, Place, Rvalue};
+    use izel_mir::{Instruction, Local, LocalData, MirBody, Operand, Rvalue};
     use izel_typeck::type_system::Type;
 
     #[test]
@@ -485,15 +481,13 @@ mod tests {
             Rvalue::Use(Operand::Constant(izel_mir::Constant::Int(1))),
         ));
         // y = &~x (mutable borrow)
-        block.instructions.push(Instruction::Assign(
-            y,
-            Rvalue::Ref(x, true),
-        ));
+        block
+            .instructions
+            .push(Instruction::Assign(y, Rvalue::Ref(x, true)));
         // z = &x (immutable borrow - CLASH)
-        block.instructions.push(Instruction::Assign(
-            z,
-            Rvalue::Ref(x, false),
-        ));
+        block
+            .instructions
+            .push(Instruction::Assign(z, Rvalue::Ref(x, false)));
 
         let mut bc = BorrowChecker::new();
         let res = bc.check(&mir);
@@ -529,15 +523,13 @@ mod tests {
             Rvalue::Use(Operand::Constant(izel_mir::Constant::Int(1))),
         ));
         // y = &x (borrow)
-        block.instructions.push(Instruction::Assign(
-            y,
-            Rvalue::Ref(x, false),
-        ));
+        block
+            .instructions
+            .push(Instruction::Assign(y, Rvalue::Ref(x, false)));
         // z = move x (ERROR: x is borrowed)
-        block.instructions.push(Instruction::Assign(
-            Local(2),
-            Rvalue::Use(Operand::Move(x)),
-        ));
+        block
+            .instructions
+            .push(Instruction::Assign(Local(2), Rvalue::Use(Operand::Move(x))));
 
         let mut bc = BorrowChecker::new();
         let res = bc.check(&mir);

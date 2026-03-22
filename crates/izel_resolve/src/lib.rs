@@ -1,3 +1,4 @@
+#![allow(clippy::arc_with_non_send_sync)]
 //! Name and scope resolution for Izel.
 
 use izel_lexer::TokenKind;
@@ -83,6 +84,12 @@ pub struct Resolver {
     next_def_id: usize,
     pub root_scope: Arc<Scope>,
     pub current_scope: Arc<Scope>,
+}
+
+impl Default for Resolver {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Resolver {

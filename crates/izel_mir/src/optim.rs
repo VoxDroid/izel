@@ -8,7 +8,7 @@ impl Dce {
         let mut changed = true;
         while changed {
             changed = false;
-            
+
             // 1. Identify used locals
             let mut used_locals = HashSet::new();
             for block in body.blocks.node_weights() {
@@ -120,13 +120,17 @@ fn collect_used_locals_rvalue(rv: &Rvalue, used: &mut HashSet<Local>) {
             collect_used_locals_operand(r, used);
         }
         Rvalue::UnaryOp(_, inner) => collect_used_locals_operand(inner, used),
-        Rvalue::Ref(local, _) => { used.insert(*local); }
+        Rvalue::Ref(local, _) => {
+            used.insert(*local);
+        }
     }
 }
 
 fn collect_used_locals_operand(op: &Operand, used: &mut HashSet<Local>) {
     match op {
-        Operand::Copy(l) | Operand::Move(l) => { used.insert(*l); }
+        Operand::Copy(l) | Operand::Move(l) => {
+            used.insert(*l);
+        }
         _ => {}
     }
 }

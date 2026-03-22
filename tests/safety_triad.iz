@@ -1,0 +1,50 @@
+// 17. Effect System verification
+forge effect_io() !io {
+    // side effect assumed
+}
+
+forge fail_pure() !pure {
+    effect_io(); // Error: effect_io has !io but fail_pure is !pure
+}
+
+forge effect_inferred() {
+    effect_io(); // Caller should infer !io
+}
+
+// 18. Witness Types verification
+forge prove_non_zero(n: i32) -> Witness<(n != 0)> {
+    raw Witness::<(n != 0)>::new()
+}
+
+forge safe_div(a: i32, b: i32, _proof: Witness<(b != 0)>) -> i32 {
+    a / b
+}
+
+// 19. Temporal Constraints verification
+@requires(n > 0)
+@ensures(result > n)
+forge must_be_positive(n: i32) -> i32 
+{
+    n + 1
+}
+
+forge failing_contracts() {
+    let y = must_be_positive(0); // Should trigger Type Error (@requires)
+}
+
+forge main() {
+    // Effects
+    effect_inferred();
+
+    // Witnesses
+    let w = prove_non_zero(10);
+    safe_div(100, 10, w);
+
+    // Contracts
+    let x = must_be_positive(5); // Valid
+}
+
+@ensures(result > 100)
+forge fail_ensures() -> i32 {
+    50
+}

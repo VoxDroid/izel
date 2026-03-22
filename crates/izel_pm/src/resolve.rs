@@ -1,6 +1,8 @@
 use crate::manifest::Dependency;
 
-pub fn resolve_dependencies(deps: &std::collections::HashMap<String, Dependency>) -> Result<(), String> {
+pub fn resolve_dependencies(
+    deps: &std::collections::HashMap<String, Dependency>,
+) -> Result<(), String> {
     for (name, dep) in deps {
         match dep {
             Dependency::Version(v) => {

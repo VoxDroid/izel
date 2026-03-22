@@ -107,6 +107,12 @@ pub enum ControlFlow {
     Conditional(bool),
 }
 
+impl Default for MirBody {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MirBody {
     pub fn new() -> Self {
         let mut blocks = DiGraph::new();

@@ -11,3 +11,4 @@ Izel.lock
 **/*.rs.bk
 .DS_Store
 *.txt
+*.venv

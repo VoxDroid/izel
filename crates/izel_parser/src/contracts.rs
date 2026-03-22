@@ -88,10 +88,13 @@ mod tests {
 
         let forge = ast::Forge {
             name: "test".to_string(),
+            visibility: ast::Visibility::Hidden,
             generic_params: vec![],
             params: vec![ast::Param {
                 name: "n".to_string(),
                 ty: ast::Type::Prim("i32".to_string()),
+                default_value: None,
+                is_variadic: false,
                 span: Span::dummy(),
             }],
             ret_type: ast::Type::Prim("i32".to_string()),
@@ -99,6 +102,7 @@ mod tests {
             attributes: vec![],
             requires: vec![req],
             ensures: vec![],
+            is_flow: false,
             body: None,
             span: Span::dummy(),
         };

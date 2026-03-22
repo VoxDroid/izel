@@ -1,4 +1,5 @@
 use crate::DefId;
+use izel_parser::ast;
 
 /// Built-in witness type kinds.
 /// Each represents a zero-cost compile-time proof that a predicate holds.
@@ -53,6 +54,9 @@ pub enum Type {
 
     /// Built-in witness types (NonZero<T>, InBounds<T>, Sorted<T>)
     BuiltinWitness(BuiltinWitness, Box<Type>),
+
+    /// Type-level predicate (e.g. n > 0)
+    Predicate(ast::Expr),
 
     /// Error sentinel
     Error,
@@ -135,4 +139,5 @@ pub struct Scheme {
     pub requires: Vec<Expr>,
     pub ensures: Vec<Expr>,
     pub intrinsic: Option<String>,
+    pub visibility: ast::Visibility,
 }

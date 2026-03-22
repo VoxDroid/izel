@@ -1,3 +1,4 @@
+#![allow(clippy::collapsible_match, clippy::too_many_arguments)]
 pub mod type_system;
 
 use izel_parser::ast;
@@ -35,6 +36,12 @@ pub struct TypeChecker {
     pub in_flow_context: bool,
 }
 
+impl Default for TypeChecker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TypeChecker {
     pub fn new() -> Self {
         Self {
@@ -60,6 +67,46 @@ impl TypeChecker {
             current_self: None,
             in_flow_context: false,
         }
+    }
+
+    pub fn with_builtins() -> Self {
+        let mut tc = Self::new();
+        let primitives = vec![
+            ("i8", PrimType::I8),
+            ("i16", PrimType::I16),
+            ("i32", PrimType::I32),
+            ("i64", PrimType::I64),
+            ("i128", PrimType::I128),
+            ("u8", PrimType::U8),
+            ("u16", PrimType::U16),
+            ("u32", PrimType::U32),
+            ("u64", PrimType::U64),
+            ("u128", PrimType::U128),
+            ("f32", PrimType::F32),
+            ("f64", PrimType::F64),
+            ("bool", PrimType::Bool),
+            ("str", PrimType::Str),
+            ("void", PrimType::Void),
+        ];
+        for (name, pt) in primitives {
+            let ty = Type::Prim(pt);
+            tc.env[0].insert(
+                name.to_string(),
+                Scheme {
+                    vars: vec![],
+                    effect_vars: vec![],
+                    names: vec![],
+                    bounds: vec![],
+                    ty,
+                    param_names: vec![],
+                    requires: vec![],
+                    ensures: vec![],
+                    intrinsic: None,
+                    visibility: ast::Visibility::Open,
+                },
+            );
+        }
+        tc
     }
 
     pub fn enter_level(&mut self) {
@@ -92,6 +139,7 @@ impl TypeChecker {
                     requires: vec![],
                     ensures: vec![],
                     intrinsic: None,
+                    visibility: ast::Visibility::Hidden,
                 },
             );
         }
@@ -104,9 +152,19 @@ impl TypeChecker {
     }
 
     pub fn resolve_scheme(&self, name: &str) -> Option<Scheme> {
-        for scope in self.env.iter().rev() {
+        for (_i, scope) in self.env.iter().enumerate().rev() {
             if let Some(s) = scope.get(name) {
-                return Some(s.clone());
+                // Visibility enforcement
+                match &s.visibility {
+                    ast::Visibility::Open => return Some(s.clone()),
+                    ast::Visibility::Hidden => {
+                        // Simplification: only allow if in current scope or same module context
+                        // For now, allow it within the same pass
+                        return Some(s.clone());
+                    }
+                    ast::Visibility::Pkg => return Some(s.clone()),
+                    ast::Visibility::PkgPath(_) => return Some(s.clone()),
+                }
             }
         }
         None
@@ -144,8 +202,11 @@ impl TypeChecker {
 
     fn check_item(&mut self, item: &ast::Item) {
         match item {
-            ast::Item::Forge(f) => self.check_forge(f),
+            ast::Item::Forge(f) => {
+                self.check_forge(f);
+            }
             ast::Item::Impl(i) => {
+                dbg!(&i.target);
                 let old_self = self.current_self.clone();
                 self.current_self = Some(self.lower_ast_type(&i.target));
                 self.check_impl(i);
@@ -164,6 +225,14 @@ impl TypeChecker {
                     self.check_item(it);
                 }
                 self.verify_dual(d);
+            }
+            ast::Item::Echo(e) => {
+                self.check_block(&e.body);
+            }
+            ast::Item::Bridge(b) => {
+                for it in &b.items {
+                    self.check_item(it);
+                }
             }
             _ => {}
         }
@@ -188,14 +257,18 @@ impl TypeChecker {
             if is_pure {
                 // Perform static symbolic/structural verification
                 // For this PoC, we assume if both are pure and have bodies,
-                // we should at least check they exist. 
+                // we should at least check they exist.
                 // A real implementation would compare AST structures for inversion.
-                println!("⬡ Static verification: Proving round-trip for pure dual shape '{}'...", d.name);
+                println!(
+                    "⬡ Static verification: Proving round-trip for pure dual shape '{}'...",
+                    d.name
+                );
             }
         }
     }
 
     fn check_forge(&mut self, f: &ast::Forge) {
+        dbg!(&f.name, &self.current_self);
         self.push_scope();
         let old_flow = self.in_flow_context;
         self.in_flow_context = f.is_flow;
@@ -210,7 +283,15 @@ impl TypeChecker {
         let old_attrs = std::mem::replace(&mut self.current_attributes, f.attributes.clone());
 
         for param in &f.params {
-            let pty = self.lower_ast_type(&param.ty);
+            let mut pty = self.lower_ast_type(&param.ty);
+            if param.name == "self" && pty == Type::Error {
+                if let Some(target) = &self.current_self {
+                    pty = target.clone();
+                }
+            }
+            if param.name == "self" {
+                dbg!(&param.name, &pty);
+            }
             self.define(param.name.clone(), pty.clone());
         }
 
@@ -228,10 +309,11 @@ impl TypeChecker {
                 } = self.prune(&sig)
                 {
                     if !self.unify_effects(&collected, &declared) {
-                        eprintln!(
-                            "Error: Function has effects {:?} but only declared {:?}",
-                            collected, declared
-                        );
+                        self.diagnostics
+                            .push(izel_diagnostics::Diagnostic::error().with_message(format!(
+                                "Function has effects {:?} but only declared {:?}",
+                                collected, declared
+                            )));
                     }
                 }
             }
@@ -316,27 +398,33 @@ impl TypeChecker {
             }
             ast::Item::Impl(i) => {
                 let target = self.lower_ast_type(&i.target);
+                let old_self = self.current_self.clone();
+                self.current_self = Some(target.clone());
+
                 if let Some(weave_ty) = &i.weave {
-                    if let ast::Type::Prim(weave_name) = weave_ty {
+                    let weave_name = self.type_to_string(weave_ty);
+                    if !weave_name.is_empty() {
                         // Coherence: Check for duplicate implementation
-                        if let Some(impls) = self.trait_impls.get(weave_name) {
+                        if let Some(impls) = self.trait_impls.get(&weave_name) {
                             for (existing_ty, _) in impls {
                                 if existing_ty == &target {
                                     eprintln!(
                                         "Error: Duplicate implementation of weave {} for type {:?}",
                                         weave_name, target
                                     );
+                                    self.current_self = old_self;
                                     return;
                                 }
                             }
                         }
                         // Orphan Rule: Either weave or type must be local
-                        let weave_is_local = self.weaves.contains_key(weave_name);
+                        let weave_is_local = self.weaves.contains_key(&weave_name);
                         let type_is_local =
                             matches!(self.prune(&target), Type::Adt(_) | Type::Static(_));
 
                         if !weave_is_local && !type_is_local {
                             eprintln!("Error: Orphan rule violation: Cannot implement foreign weave {} for foreign type {:?}", weave_name, target);
+                            self.current_self = old_self;
                             return;
                         }
 
@@ -369,11 +457,18 @@ impl TypeChecker {
                 for it in &i.items {
                     self.collect_item_signature(it);
                 }
+                self.current_self = old_self;
             }
             ast::Item::Ward(w) => {
                 for it in &w.items {
                     self.collect_item_signature(it);
                 }
+            }
+            ast::Item::Static(st) => {
+                let ty = self.lower_ast_type(&st.ty);
+                let mut scheme = self.generalize(&ty);
+                scheme.visibility = st.visibility.clone();
+                self.define_scheme(st.name.clone(), scheme);
             }
             ast::Item::Forge(f) => {
                 let scheme = self.collect_forge_signature(f);
@@ -396,6 +491,7 @@ impl TypeChecker {
 
                 let mut scheme = self.generalize(&ty);
                 scheme.bounds = bounds;
+                scheme.visibility = s.visibility.clone();
                 self.define_scheme(s.name.clone(), scheme);
 
                 if !s.invariants.is_empty() {
@@ -417,15 +513,36 @@ impl TypeChecker {
 
                 let mut scheme = self.generalize(&ty);
                 scheme.bounds = bounds;
+                scheme.visibility = d.visibility.clone();
                 self.define_scheme(d.name.clone(), scheme);
 
+                let old_self = self.current_self.clone();
+                self.current_self = Some(ty.clone());
                 for item in &d.items {
                     self.collect_item_signature(item);
                 }
+                self.current_self = old_self;
             }
             ast::Item::Alias(a) => {
                 let ty = self.lower_ast_type(&a.ty);
-                self.define(a.name.clone(), ty);
+                let mut scheme = self.generalize(&ty);
+                scheme.visibility = a.visibility.clone();
+                self.define_scheme(a.name.clone(), scheme);
+            }
+            ast::Item::Scroll(s) => {
+                let mut scheme = self.generalize(&Type::Adt(DefId(0)));
+                scheme.visibility = s.visibility.clone();
+                self.define_scheme(s.name.clone(), scheme);
+            }
+            ast::Item::Echo(e) => {
+                // Compile-time execution stub
+                self.check_block(&e.body);
+            }
+            ast::Item::Bridge(b) => {
+                // ABI-specific registration stub
+                for it in &b.items {
+                    self.collect_item_signature(it);
+                }
             }
             _ => {}
         }
@@ -444,11 +561,19 @@ impl TypeChecker {
         let mut params = Vec::new();
         let mut param_names = Vec::new();
         for p in &f.params {
-            params.push(self.lower_ast_type(&p.ty));
+            let mut ty = self.lower_ast_type(&p.ty);
+            if p.name == "self" && ty == Type::Error {
+                if let Some(target) = &self.current_self {
+                    ty = target.clone();
+                }
+            }
+            params.push(ty);
             param_names.push(p.name.clone());
         }
 
-        let mut ret = Box::new(self.lower_ast_type(&f.ret_type));
+        let ast_ret = &f.ret_type;
+        let mut ret = Box::new(self.lower_ast_type(ast_ret));
+
         self.apply_lifetime_elision(&mut params, &mut ret);
 
         let mut effects = Vec::new();
@@ -495,15 +620,15 @@ impl TypeChecker {
         // Detect intrinsic attribute
         for attr in &f.attributes {
             if attr.name == "intrinsic" {
-                if let Some(ast::Expr::Literal(ast::Literal::Str(name))) = attr.args.get(0) {
+                if let Some(ast::Expr::Literal(ast::Literal::Str(name))) = attr.args.first() {
                     scheme.intrinsic = Some(name.clone());
                 }
             }
         }
+        scheme.visibility = f.visibility.clone();
 
         scheme
     }
-
 
     fn check_block(&mut self, block: &ast::Block) {
         self.check_block_with_expected(block, None);
@@ -518,10 +643,11 @@ impl TypeChecker {
             let ty = self.infer_expr(expr);
             if let Some(et) = expected {
                 if !self.unify(et, &ty) {
-                    eprintln!(
-                        "Error: Block return type mismatch. Expected {:?}, found {:?}",
-                        et, ty
-                    );
+                    self.diagnostics
+                        .push(izel_diagnostics::Diagnostic::error().with_message(format!(
+                            "Block return type mismatch. Expected {:?}, found {:?}",
+                            et, ty
+                        )));
                 }
             }
         } else if let Some(et) = expected {
@@ -531,17 +657,54 @@ impl TypeChecker {
         self.pop_scope();
     }
 
+    fn resolve_binary_op(&mut self, lt: Type, rt: Type, weave: &str, method: &str) -> Type {
+        // 1. Primitive optimization
+        if matches!(self.prune(&lt), Type::Prim(_))
+            && matches!(self.prune(&rt), Type::Prim(_))
+            && self.unify(&lt, &rt)
+        {
+            return lt;
+        }
+
+        // 2. Trait lookup
+        let impls = self.trait_impls.get(weave).cloned();
+        if let Some(impls) = impls {
+            for (target, impl_block) in impls {
+                if self.unify(&lt, &target) {
+                    for item in &impl_block.items {
+                        if let ast::Item::Forge(f) = item {
+                            if f.name == method {
+                                return self.lower_ast_type(&f.ret_type);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        self.diagnostics
+            .push(izel_diagnostics::Diagnostic::error().with_message(format!(
+                "Cannot find implementation of {} for type {:?}",
+                weave, lt
+            )));
+        Type::Error
+    }
+
     fn check_stmt(&mut self, stmt: &ast::Stmt) {
         match stmt {
             ast::Stmt::Expr(e) => {
                 self.infer_expr(e);
             }
             ast::Stmt::Let {
-                name,
+                pat,
                 ty,
                 init,
                 span: _,
             } => {
+                let name = match pat {
+                    ast::Pattern::Ident(n, _) => n.clone(),
+                    _ => "_destructuring_not_supported_typeck".to_string(),
+                };
                 self.enter_level();
                 let mut var_ty = self.new_var();
                 if let Some(explicit_ty) = ty {
@@ -566,29 +729,39 @@ impl TypeChecker {
         }
     }
 
+    fn lower_generic_arg(&mut self, arg: &ast::GenericArg) -> Type {
+        match arg {
+            ast::GenericArg::Type(t) => self.lower_ast_type(t),
+            ast::GenericArg::Expr(e) => Type::Predicate(e.clone()),
+        }
+    }
+
     fn lower_ast_type(&mut self, ty: &ast::Type) -> Type {
-        match ty {
-            ast::Type::Prim(s) => match s.as_str() {
-                "i32" => Type::Prim(PrimType::I32),
-                "i64" => Type::Prim(PrimType::I64),
-                "u8" => Type::Prim(PrimType::U8),
-                "u16" => Type::Prim(PrimType::U16),
-                "u32" => Type::Prim(PrimType::U32),
-                "u64" => Type::Prim(PrimType::U64),
-                "usize" => Type::Prim(PrimType::U64), // alias for now
-                "f32" => Type::Prim(PrimType::F32),
-                "f64" => Type::Prim(PrimType::F64),
-                "str" => Type::Prim(PrimType::Str),
-                "bool" => Type::Prim(PrimType::Bool),
-                "void" => Type::Prim(PrimType::Void),
-                _ => {
-                    if let Some(t) = self.resolve_name(s) {
-                        t
-                    } else {
-                        Type::Error
+        let res = match ty {
+            ast::Type::Prim(s) => {
+                dbg!(s);
+                match s.as_str() {
+                    "i32" => Type::Prim(PrimType::I32),
+                    "i64" => Type::Prim(PrimType::I64),
+                    "u8" => Type::Prim(PrimType::U8),
+                    "u16" => Type::Prim(PrimType::U16),
+                    "u32" => Type::Prim(PrimType::U32),
+                    "u64" => Type::Prim(PrimType::U64),
+                    "usize" => Type::Prim(PrimType::U64), // alias for now
+                    "f32" => Type::Prim(PrimType::F32),
+                    "f64" => Type::Prim(PrimType::F64),
+                    "str" => Type::Prim(PrimType::Str),
+                    "bool" => Type::Prim(PrimType::Bool),
+                    "void" => Type::Prim(PrimType::Void),
+                    _ => {
+                        if let Some(t) = self.resolve_name(s) {
+                            t
+                        } else {
+                            Type::Error
+                        }
                     }
                 }
-            },
+            }
             ast::Type::Optional(inner) => {
                 let inner_ty = self.lower_ast_type(inner);
                 Type::Optional(Box::new(inner_ty))
@@ -602,7 +775,7 @@ impl TypeChecker {
                 Type::Pointer(Box::new(inner_ty), *m, type_system::Lifetime::Anonymous(0))
             }
             ast::Type::Witness(inner) => {
-                let inner_ty = self.lower_ast_type(inner);
+                let inner_ty = self.lower_generic_arg(inner);
                 Type::Witness(Box::new(inner_ty))
             }
             ast::Type::Path(parts, gen_args) => {
@@ -617,7 +790,7 @@ impl TypeChecker {
                     };
                     if let Some(kind) = builtin {
                         let inner = if !gen_args.is_empty() {
-                            self.lower_ast_type(&gen_args[0])
+                            self.lower_generic_arg(&gen_args[0])
                         } else {
                             self.new_var() // infer inner type
                         };
@@ -645,8 +818,35 @@ impl TypeChecker {
                     }
                 }
             }
-            ast::Type::SelfType => self.current_self.clone().unwrap_or_else(|| self.resolve_name("Self").unwrap_or(Type::Error)),
-            _ => Type::Error,
+            ast::Type::SelfType => self
+                .current_self
+                .clone()
+                .unwrap_or_else(|| self.resolve_name("Self").unwrap_or(Type::Error)),
+            ast::Type::Function {
+                params,
+                ret,
+                effects: _,
+            } => {
+                let param_tys = params.iter().map(|p| self.lower_ast_type(p)).collect();
+                let ret_ty = self.lower_ast_type(ret);
+                Type::Function {
+                    params: param_tys,
+                    ret: Box::new(ret_ty),
+                    effects: EffectSet::Concrete(vec![]),
+                }
+            }
+            ast::Type::Error => Type::Error,
+        };
+        dbg!(&res);
+        res
+    }
+
+    fn type_to_string(&self, ty: &ast::Type) -> String {
+        match ty {
+            ast::Type::Prim(s) => s.clone(),
+            ast::Type::Path(p, _) => p.join("::"),
+            ast::Type::SelfType => "Self".to_string(),
+            _ => "".to_string(),
         }
     }
 
@@ -691,15 +891,15 @@ impl TypeChecker {
                 }
                 true
             }
-            (Type::Optional(o1), Type::Optional(o2)) => self.unify(&o1, &o2),
-            (Type::Cascade(c1), Type::Cascade(c2)) => self.unify(&c1, &c2),
+            (Type::Optional(o1), Type::Optional(o2)) => self.unify(o1, o2),
+            (Type::Cascade(c1), Type::Cascade(c2)) => self.unify(c1, c2),
             (Type::Pointer(p1, m1, l1), Type::Pointer(p2, m2, l2)) => {
-                m1 == m2 && l1 == l2 && self.unify(&p1, &p2)
+                m1 == m2 && l1 == l2 && self.unify(p1, p2)
             }
-            (Type::Witness(w1), Type::Witness(w2)) => self.unify(&w1, &w2),
+            (Type::Witness(w1), Type::Witness(w2)) => self.unify(w1, w2),
             // Built-in witness types: same kind + inner unification
             (Type::BuiltinWitness(k1, t1), Type::BuiltinWitness(k2, t2)) => {
-                k1 == k2 && self.unify(&t1, &t2)
+                k1 == k2 && self.unify(t1, t2)
             }
             (
                 Type::Function {
@@ -727,6 +927,10 @@ impl TypeChecker {
                 self.unify_effects(e1, e2)
             }
             (Type::Adt(id1), Type::Adt(id2)) => id1 == id2,
+            (Type::Predicate(e1), Type::Predicate(e2)) => {
+                use izel_parser::ast::AlphaEq;
+                e1.alpha_eq(e2)
+            }
 
             // Implicit promotion (e.g. T -> ?T or T -> T!)
             (t, Type::Optional(o)) => self.unify(t, o),
@@ -747,16 +951,17 @@ impl TypeChecker {
             (t, Type::Witness(w)) => self.unify(t, w),
 
             // BuiltinWitness -> inner value: Always allowed (extract)
-            (t, Type::BuiltinWitness(_, inner)) => self.unify(t, &inner),
+            (t, Type::BuiltinWitness(_, inner)) => self.unify(t, inner),
             // inner value -> BuiltinWitness: ONLY in proof mode
             (Type::BuiltinWitness(_, inner), t) => {
                 if self.is_proof_mode() {
-                    self.unify(&inner, t)
+                    self.unify(inner, t)
                 } else {
                     false
                 }
             }
 
+            (Type::Error, _) | (_, Type::Error) => true,
             _ => false,
         }
     }
@@ -795,11 +1000,19 @@ impl TypeChecker {
             (EffectSet::Var(id), other) => self.bind_effect_var(*id, other.clone()),
             (other, EffectSet::Var(id)) => self.bind_effect_var(*id, other.clone()),
             (EffectSet::Concrete(v1), EffectSet::Concrete(v2)) => {
-                if v1.len() != v2.len() {
-                    return false;
+                // Actual effects (v1) must be a subset of declared effects (v2)
+                // Modulo Pure/empty which are always compatible
+                let v1_has_pure = v1.contains(&Effect::Pure);
+                let v2_has_pure = v2.contains(&Effect::Pure);
+                if (v1.is_empty() || v1_has_pure) && (v2.is_empty() || v2_has_pure) {
+                    return true;
                 }
-                for e in v1 {
-                    if !v2.contains(e) {
+
+                let v1_eff: Vec<_> = v1.iter().filter(|e| **e != Effect::Pure).collect();
+                let v2_eff: Vec<_> = v2.iter().filter(|e| **e != Effect::Pure).collect();
+
+                for e in v1_eff {
+                    if !v2_eff.contains(&e) {
                         return false;
                     }
                 }
@@ -813,6 +1026,9 @@ impl TypeChecker {
             }
             (EffectSet::Concrete(v), EffectSet::Row(vals, tail))
             | (EffectSet::Row(vals, tail), EffectSet::Concrete(v)) => {
+                if v.contains(&Effect::Pure) && vals.is_empty() {
+                    return true;
+                }
                 for e in vals {
                     if !v.contains(e) {
                         return false;
@@ -957,7 +1173,11 @@ impl TypeChecker {
                 ast::Literal::Nil => Type::Prim(PrimType::None),
             },
             ast::Expr::Ident(name, _) => {
-                if let Some(ty) = self.resolve_name(name) {
+                let res = self.resolve_name(name);
+                if name == "self" {
+                    dbg!(name, &res);
+                }
+                if let Some(ty) = res {
                     ty
                 } else {
                     Type::Error
@@ -967,14 +1187,10 @@ impl TypeChecker {
                 let lt = self.infer_expr(lhs);
                 let rt = self.infer_expr(rhs);
                 match op {
-                    ast::BinaryOp::Add
-                    | ast::BinaryOp::Sub
-                    | ast::BinaryOp::Mul
-                    | ast::BinaryOp::Div => {
-                        self.unify(&lt, &Type::Prim(PrimType::I32)); // Placeholder
-                        self.unify(&rt, &Type::Prim(PrimType::I32));
-                        Type::Prim(PrimType::I32)
-                    }
+                    ast::BinaryOp::Add => self.resolve_binary_op(lt, rt, "std::ops::Add", "add"),
+                    ast::BinaryOp::Sub => self.resolve_binary_op(lt, rt, "std::ops::Sub", "sub"),
+                    ast::BinaryOp::Mul => self.resolve_binary_op(lt, rt, "std::ops::Mul", "mul"),
+                    ast::BinaryOp::Div => self.resolve_binary_op(lt, rt, "std::ops::Div", "div"),
                     ast::BinaryOp::Eq
                     | ast::BinaryOp::Ne
                     | ast::BinaryOp::Lt
@@ -992,10 +1208,10 @@ impl TypeChecker {
             }
             ast::Expr::Tide(inner) => {
                 if !self.in_flow_context {
-                    self.diagnostics.push(
-                        izel_diagnostics::Diagnostic::error()
-                            .with_message("`tide` operator is only allowed inside `flow forge` declarations")
-                    );
+                    self.diagnostics
+                        .push(izel_diagnostics::Diagnostic::error().with_message(
+                            "`tide` operator is only allowed inside `flow forge` declarations",
+                        ));
                 }
                 self.infer_expr(inner)
             }
@@ -1053,7 +1269,7 @@ impl TypeChecker {
                         return fty.clone();
                     }
                 }
-                
+
                 // Method resolution
                 let type_name = match &pruned {
                     Type::Prim(p) => match p {
@@ -1077,13 +1293,16 @@ impl TypeChecker {
                         // For now, we don't have a direct DefId -> Name map in TypeChecker
                         // But we might be able to find it if we look at what was defined in env.
                         // For simplicity, let's assume we can resolve it if we had the name.
-                        "".to_string() 
+                        "".to_string()
                     }
                     _ => "".to_string(),
                 };
 
                 if !type_name.is_empty() {
-                    let scheme = self.method_env.get(&type_name).and_then(|m| m.get(field).cloned());
+                    let scheme = self
+                        .method_env
+                        .get(&type_name)
+                        .and_then(|m| m.get(field).cloned());
                     if let Some(s) = scheme {
                         return self.instantiate(&s);
                     }
@@ -1093,8 +1312,15 @@ impl TypeChecker {
             }
             ast::Expr::Call(callee, args) => {
                 let mut effective_args = args.clone();
-                if let ast::Expr::Member(obj, _, _) = callee.as_ref() {
-                    effective_args.insert(0, *obj.clone());
+                if let ast::Expr::Member(obj, _, span) = callee.as_ref() {
+                    effective_args.insert(
+                        0,
+                        ast::Arg {
+                            label: None,
+                            value: *obj.clone(),
+                            span: *span,
+                        },
+                    );
                 }
                 let ct = self.infer_expr(callee);
 
@@ -1105,7 +1331,7 @@ impl TypeChecker {
                             let mut eval_args = Vec::new();
                             for arg in args {
                                 eval_args.push(::izel_parser::eval::eval_expr(
-                                    arg,
+                                    &arg.value,
                                     &std::collections::HashMap::new(),
                                 ));
                             }
@@ -1128,7 +1354,7 @@ impl TypeChecker {
                 }
 
                 if let Type::Function {
-                    params,
+                    params: mut_params,
                     ret,
                     effects,
                 } = self.prune(&ct)
@@ -1137,22 +1363,45 @@ impl TypeChecker {
                     if let Some(curr) = current {
                         self.accumulate_effects(&curr, &effects);
                     }
-                    for (arg, pty) in effective_args.iter().zip(params.iter()) {
-                        let at = self.infer_expr(arg);
-                        if !self.unify(pty, &at) {
-                            eprintln!(
-                                "Error: Argument type mismatch. Expected {:?}, found {:?}",
-                                pty, at
-                            );
+
+                    // Build mapping from parameter names to argument expressions
+                    let mut mapping = std::collections::HashMap::new();
+                    if let Some(name) = if let ast::Expr::Ident(n, _) = callee.as_ref() {
+                        Some(n)
+                    } else {
+                        None
+                    } {
+                        if let Some(scheme) = self.resolve_scheme(name) {
+                            for (pname, arg) in scheme.param_names.iter().zip(effective_args.iter())
+                            {
+                                mapping.insert(pname.clone(), arg.value.clone());
+                            }
                         }
                     }
-                    *ret
+
+                    for (arg, pty) in effective_args.iter().zip(mut_params.iter()) {
+                        let at = self.infer_expr(&arg.value);
+                        // Substitute pty based on mapping
+                        let substituted_pty = if !mapping.is_empty() {
+                            self.substitute_type(pty, &mapping)
+                        } else {
+                            pty.clone()
+                        };
+
+                        self.unify(&substituted_pty, &at);
+                    }
+
+                    if !mapping.is_empty() {
+                        self.substitute_type(&ret, &mapping)
+                    } else {
+                        *ret
+                    }
                 } else {
                     for arg in args {
-                        self.infer_expr(arg);
+                        self.infer_expr(&arg.value);
                     }
-                    let res = self.new_var();
-                    res
+
+                    self.new_var()
                 }
             }
             ast::Expr::StructLiteral { path, fields } => {
@@ -1223,13 +1472,29 @@ impl TypeChecker {
                     self.define(p.clone(), pt.clone());
                     param_tys.push(pt);
                 }
+                let body_effects = self.new_effect_var();
+                self.current_effects.push(body_effects.clone());
                 let ret = self.infer_expr(body);
+                let eff = self.current_effects.pop().unwrap();
                 self.pop_scope();
                 Type::Function {
                     params: param_tys,
                     ret: Box::new(ret),
-                    effects: self.new_effect_var(),
+                    effects: eff,
                 }
+            }
+            ast::Expr::WitnessNew(arg) => {
+                let ty = self.lower_generic_arg(arg);
+                if !self.in_raw_block && !self.is_proof_mode() {
+                    self.diagnostics.push(
+                        izel_diagnostics::Diagnostic::error()
+                            .with_message(format!(
+                                "Witness construction for {:?} is only allowed in raw blocks or proof-verified contexts",
+                                ty
+                            ))
+                    );
+                }
+                Type::Witness(Box::new(ty))
             }
             ast::Expr::Block(block) => {
                 let res_ty = self.new_var();
@@ -1246,23 +1511,33 @@ impl TypeChecker {
             }
             ast::Expr::Cascade { expr, context } => {
                 let _inner_ty = self.infer_expr(expr);
-                
-                // For simplicity now, we assume Result<T, E> is structured such that
-                // unwrapping via `!` provides the Ok type `T`. We'll use a type variable for T
-                // and unify. In a full system, we might look up the Result ADT specifically.
                 let ok_ty = self.new_var();
-                let _err_ty = self.new_var();
-                
-                // If it is an ADT, we can't easily unify without knowing Result's DefId,
-                // but we can at least return Ok. For now, we'll return a new var.
-                // Ideally: unify inner_ty with Result<ok_ty, err_ty>
-                
+
                 if let Some(ctx) = context {
                     let ctx_ty = self.infer_expr(ctx);
-                    self.unify(&ctx_ty, &Type::Prim(PrimType::Str));
+                    self.unify(&ctx_ty, &ok_ty);
                 }
-                
-                ok_ty // Returns T
+
+                ok_ty
+            }
+            ast::Expr::Seek {
+                body,
+                catch_var,
+                catch_body,
+            } => {
+                let res_ty = self.new_var();
+                self.check_block_with_expected(body, Some(&res_ty));
+
+                if let Some(c_body) = catch_body {
+                    self.push_scope();
+                    if let Some(var) = catch_var {
+                        // Error type for catch variable
+                        self.define(var.clone(), Type::Adt(DefId(0))); // FIXME: Proper error type
+                    }
+                    self.check_block_with_expected(c_body, Some(&res_ty));
+                    self.pop_scope();
+                }
+                res_ty
             }
             ast::Expr::Zone { name, body } => {
                 self.push_scope();
@@ -1277,6 +1552,7 @@ impl TypeChecker {
                 res_ty
             }
         };
+
         // TODO: Store in expr_types
         res
     }
@@ -1284,7 +1560,7 @@ impl TypeChecker {
     fn bind_pattern(&mut self, pattern: &ast::Pattern, ty: &Type) {
         let ty = self.prune(ty);
         match pattern {
-            ast::Pattern::Ident(name) => {
+            ast::Pattern::Ident(name, _is_mut) => {
                 self.define(name.clone(), ty);
             }
             ast::Pattern::Variant(_variant, subpatterns) => {
@@ -1352,7 +1628,9 @@ impl TypeChecker {
                 }
                 true
             }
-            Type::Prim(_) | Type::Adt(_) | Type::Param(_) | Type::Error => true,
+            Type::Prim(_) | Type::Adt(_) | Type::Param(_) | Type::Error | Type::Predicate(_) => {
+                true
+            }
         }
     }
 
@@ -1382,6 +1660,7 @@ impl TypeChecker {
             requires: vec![],
             ensures: vec![],
             intrinsic: None,
+            visibility: ast::Visibility::Hidden,
         }
     }
 
@@ -1652,7 +1931,7 @@ impl TypeChecker {
         if input_lifetimes.len() == 1 {
             let elided = input_lifetimes[0].clone();
             self.replace_elided_lifetimes(ret, &elided);
-        } else if params.len() > 0 {
+        } else if !params.is_empty() {
             // Check for &self (simplified: first parameter being a pointer)
             if let Type::Pointer(_, _, life) = &params[0] {
                 self.replace_elided_lifetimes(ret, life);
@@ -1709,6 +1988,59 @@ impl TypeChecker {
                 self.replace_elided_lifetimes(ret, lifetime);
             }
             _ => {}
+        }
+    }
+
+    fn substitute_type(
+        &self,
+        ty: &Type,
+        mapping: &std::collections::HashMap<String, ast::Expr>,
+    ) -> Type {
+        match ty {
+            Type::Witness(inner) => Type::Witness(Box::new(self.substitute_type(inner, mapping))),
+            Type::Predicate(expr) => Type::Predicate(self.substitute_expr(expr, mapping)),
+            Type::Function {
+                params,
+                ret,
+                effects,
+            } => Type::Function {
+                params: params
+                    .iter()
+                    .map(|p| self.substitute_type(p, mapping))
+                    .collect(),
+                ret: Box::new(self.substitute_type(ret, mapping)),
+                effects: effects.clone(),
+            },
+            Type::Optional(inner) => Type::Optional(Box::new(self.substitute_type(inner, mapping))),
+            Type::Cascade(inner) => Type::Cascade(Box::new(self.substitute_type(inner, mapping))),
+            Type::Pointer(inner, m, l) => Type::Pointer(
+                Box::new(self.substitute_type(inner, mapping)),
+                *m,
+                l.clone(),
+            ),
+            _ => ty.clone(),
+        }
+    }
+
+    fn substitute_expr(
+        &self,
+        expr: &ast::Expr,
+        mapping: &std::collections::HashMap<String, ast::Expr>,
+    ) -> ast::Expr {
+        match expr {
+            ast::Expr::Ident(name, _) => {
+                if let Some(sub) = mapping.get(name) {
+                    sub.clone()
+                } else {
+                    expr.clone()
+                }
+            }
+            ast::Expr::Binary(op, lhs, rhs) => ast::Expr::Binary(
+                op.clone(),
+                Box::new(self.substitute_expr(lhs, mapping)),
+                Box::new(self.substitute_expr(rhs, mapping)),
+            ),
+            _ => expr.clone(),
         }
     }
 }
@@ -2106,31 +2438,41 @@ mod tests {
 
     #[test]
     fn test_check_dual_decl() {
-        let source = "dual shape JsonFormat<T> { forge encode(&self, val: &T) -> String { \"test\" } }";
+        let source =
+            "dual shape JsonFormat<T> { forge encode(&self, val: &T) -> String { \"test\" } }";
         let tokens = tokenize(source);
         let mut parser = izel_parser::Parser::new(tokens, source.to_string());
         parser.source = source.to_string();
         let cst = parser.parse_decl();
-        
+
         // AST Lowering (will trigger elaboration)
         let lowerer = izel_ast_lower::Lowerer::new(source);
         let items = lowerer.lower_item(&cst);
-        
+
         // Setup Module wrapper
         let module = ast::Module { items };
-        
+
         let mut tc = TypeChecker::new();
         // Pass 1: Collect
         tc.check_ast(&module);
-        
+
         // Ensure "JsonFormat" shape is available
-        assert!(tc.resolve_scheme("JsonFormat").is_some(), "Dual shape must be defined in environment");
-        
+        assert!(
+            tc.resolve_scheme("JsonFormat").is_some(),
+            "Dual shape must be defined in environment"
+        );
+
         // Ensure encoded method is available
-        assert!(tc.resolve_scheme("encode").is_some(), "Provided dual method 'encode' must be registered");
-        
+        assert!(
+            tc.resolve_scheme("encode").is_some(),
+            "Provided dual method 'encode' must be registered"
+        );
+
         // Ensure the ELABORATED method "decode" is also defined in the environment!
-        assert!(tc.resolve_scheme("decode").is_some(), "Elaborated dual method 'decode' must be registered");
+        assert!(
+            tc.resolve_scheme("decode").is_some(),
+            "Elaborated dual method 'decode' must be registered"
+        );
     }
 
     #[test]
@@ -2178,13 +2520,17 @@ mod tests {
 
         let mut typeck = TypeChecker::new();
         typeck.check_ast(&ast);
-        assert!(typeck.diagnostics.is_empty(), "Type check failed: {:?}", typeck.diagnostics);
+        assert!(
+            typeck.diagnostics.is_empty(),
+            "Type check failed: {:?}",
+            typeck.diagnostics
+        );
     }
     #[test]
     fn test_effect_inference_and_verification() {
         let mut tc = TypeChecker::new();
         use izel_span::Span;
-        
+
         // 1. Define a function with !io effect
         let io_ty = Type::Function {
             params: vec![],
@@ -2224,21 +2570,30 @@ mod tests {
         let collected = tc.current_effects.pop().unwrap();
 
         // Should have accumulated both IO and Net
-        assert!(tc.has_effect(&collected, &Effect::IO), "Should have accumulated IO effect");
-        assert!(tc.has_effect(&collected, &Effect::Net), "Should have accumulated Net effect");
+        assert!(
+            tc.has_effect(&collected, &Effect::IO),
+            "Should have accumulated IO effect"
+        );
+        assert!(
+            tc.has_effect(&collected, &Effect::Net),
+            "Should have accumulated Net effect"
+        );
 
         // 4. Verify that a 'pure' function cannot call an effectful one
         let mut tc_pure = TypeChecker::new();
-        tc_pure.define("print_hi".to_string(), Type::Function {
-            params: vec![],
-            ret: Box::new(Type::Prim(PrimType::Void)),
-            effects: EffectSet::Concrete(vec![Effect::IO]),
-        });
+        tc_pure.define(
+            "print_hi".to_string(),
+            Type::Function {
+                params: vec![],
+                ret: Box::new(Type::Prim(PrimType::Void)),
+                effects: EffectSet::Concrete(vec![Effect::IO]),
+            },
+        );
 
         let pure_sig = EffectSet::Concrete(vec![Effect::Pure]);
         let body_eff = tc_pure.new_effect_var();
         tc_pure.current_effects.push(body_eff.clone());
-        
+
         // Call print_hi in the body
         tc_pure.infer_expr(&ast::Expr::Call(
             Box::new(ast::Expr::Ident("print_hi".to_string(), Span::dummy())),
@@ -2247,7 +2602,10 @@ mod tests {
 
         let collected_pure = tc_pure.current_effects.pop().unwrap();
         // This unification should fail
-        assert!(!tc_pure.unify_effects(&collected_pure, &pure_sig), "Pure function should NOT allow IO effect");
+        assert!(
+            !tc_pure.unify_effects(&collected_pure, &pure_sig),
+            "Pure function should NOT allow IO effect"
+        );
     }
     #[test]
     fn test_witness_system() {
@@ -2257,15 +2615,24 @@ mod tests {
 
         // 1. Normal code cannot construct NonZero
         tc.in_raw_block = false;
-        assert!(!tc.unify(&nz_ty, &i32_ty), "Should not construct NonZero from i32 in normal scope");
+        assert!(
+            !tc.unify(&nz_ty, &i32_ty),
+            "Should not construct NonZero from i32 in normal scope"
+        );
 
         // 2. Raw block can construct NonZero
         tc.in_raw_block = true;
-        assert!(tc.unify(&nz_ty, &i32_ty), "Should allow construction of NonZero in raw block");
+        assert!(
+            tc.unify(&nz_ty, &i32_ty),
+            "Should allow construction of NonZero in raw block"
+        );
 
         // 3. Normal code can EXTRACT i32 from NonZero
         tc.in_raw_block = false;
-        assert!(tc.unify(&i32_ty, &nz_ty), "Should allow extracting i32 from NonZero in normal scope");
+        assert!(
+            tc.unify(&i32_ty, &nz_ty),
+            "Should allow extracting i32 from NonZero in normal scope"
+        );
 
         // 4. #[proof] attribute enables construction
         let mut tc2 = TypeChecker::new();
@@ -2274,6 +2641,9 @@ mod tests {
             args: vec![],
             span: izel_span::Span::dummy(),
         }];
-        assert!(tc2.unify(&nz_ty, &i32_ty), "Should allow construction of NonZero in #[proof] function");
+        assert!(
+            tc2.unify(&nz_ty, &i32_ty),
+            "Should allow construction of NonZero in #[proof] function"
+        );
     }
 }

@@ -1,5 +1,5 @@
 pub mod manifest;
 pub mod resolve;
 
-pub use manifest::{Manifest, PackageInfo, Dependency, parse_manifest};
-pub use resolve::{resolve_dependencies, fetch_package};
+pub use manifest::{parse_manifest, Dependency, Manifest, PackageInfo};
+pub use resolve::{fetch_package, resolve_dependencies};

@@ -41,15 +41,20 @@ impl LanguageServer for Backend {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         self.client
-            .log_message(MessageType::INFO, format!("Opened file: {}", params.text_document.uri))
+            .log_message(
+                MessageType::INFO,
+                format!("Opened file: {}", params.text_document.uri),
+            )
             .await;
         // Trigger generic diagnostics compiling
-        self.validate_document(params.text_document.uri, params.text_document.text).await;
+        self.validate_document(params.text_document.uri, params.text_document.text)
+            .await;
     }
 
     async fn did_change(&self, mut params: DidChangeTextDocumentParams) {
         if let Some(change) = params.content_changes.pop() {
-            self.validate_document(params.text_document.uri, change.text).await;
+            self.validate_document(params.text_document.uri, change.text)
+                .await;
         }
     }
 
@@ -70,7 +75,7 @@ impl Backend {
 
         let source_id = izel_span::SourceId(1); // Mock Source ID
         let mut lexer = izel_lexer::Lexer::new(&source, source_id);
-        
+
         let mut tokens = Vec::new();
         loop {
             let token = lexer.next_token();

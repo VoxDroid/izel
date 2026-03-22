@@ -258,12 +258,12 @@ This document provides a granular, step-by-step roadmap for building the Izel co
     - [x] Verify round-trip laws (`decode(encode(x)) == x`).
 
 ## Phase 10: Backend & Production
-- [ ] **LLVM Codegen**:
-    - [ ] Finalize `izel_codegen` with `inkwell`.
-    - [ ] Support object file and executable emission.
-- [ ] **Standard Library v0.1**:
-    - [ ] Complete `std::collections` (Vec, HashMap).
-    - [ ] Implement `flow` / `tide` async runtime.
-- [ ] **Ecosystem**:
-    - [ ] Self-host the full compiler backend.
-    - [ ] Public package registry integration.
+- [x] **LLVM Codegen**:
+    - [x] Finalize `izel_codegen` with `inkwell`.
+    - [x] Support object file and executable emission.
+- [x] **Standard Library v0.1**:
+    - [x] Complete `std::collections` (Vec, HashMap).
+    - [x] Implement `flow` / `tide` async runtime.
+- [x] **Ecosystem**:
+    - [x] Self-host the full compiler backend.
+    - [x] Public package registry integration.

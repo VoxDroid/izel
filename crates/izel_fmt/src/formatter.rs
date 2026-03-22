@@ -1,6 +1,6 @@
-use izel_parser::Parser;
-use izel_parser::cst::{SyntaxNode, SyntaxElement, NodeKind};
 use izel_lexer::{Lexer, TokenKind};
+use izel_parser::cst::{NodeKind, SyntaxElement, SyntaxNode};
+use izel_parser::Parser;
 use izel_span::SourceId;
 
 /// Formats the given Izel source string into a deterministically styled string.
@@ -103,7 +103,11 @@ impl<'a> Formatter<'a> {
                     }
                 }
             }
-            NodeKind::Block | NodeKind::ShapeDecl | NodeKind::ScrollDecl | NodeKind::WeaveDecl | NodeKind::ImplBlock => {
+            NodeKind::Block
+            | NodeKind::ShapeDecl
+            | NodeKind::ScrollDecl
+            | NodeKind::WeaveDecl
+            | NodeKind::ImplBlock => {
                 for child in &node.children {
                     match child {
                         SyntaxElement::Token(t) if t.kind == TokenKind::OpenBrace => {
@@ -129,22 +133,26 @@ impl<'a> Formatter<'a> {
                         }
                         _ => {
                             self.format_element(child);
-                            
+
                             // For statements in a block, add newline if not already there
-                            if node.kind == NodeKind::Block && matches!(child, SyntaxElement::Node(n) if 
-                                n.kind == NodeKind::LetStmt || n.kind == NodeKind::ExprStmt || 
-                                n.kind == NodeKind::GivenExpr || n.kind == NodeKind::WhileExpr || 
-                                n.kind == NodeKind::LoopExpr) 
+                            if node.kind == NodeKind::Block
+                                && matches!(child, SyntaxElement::Node(n) if
+                                n.kind == NodeKind::LetStmt || n.kind == NodeKind::ExprStmt ||
+                                n.kind == NodeKind::GivenExpr || n.kind == NodeKind::WhileExpr ||
+                                n.kind == NodeKind::LoopExpr)
+                                && !self.output.ends_with('\n')
                             {
-                                if !self.output.ends_with('\n') {
-                                    self.push_newline();
-                                }
+                                self.push_newline();
                             }
                         }
                     }
                 }
             }
-            NodeKind::Field | NodeKind::Variant | NodeKind::LetStmt | NodeKind::Param | NodeKind::GenericParam => {
+            NodeKind::Field
+            | NodeKind::Variant
+            | NodeKind::LetStmt
+            | NodeKind::Param
+            | NodeKind::GenericParam => {
                 for child in &node.children {
                     self.format_element(child);
                 }
@@ -177,30 +185,57 @@ impl<'a> Formatter<'a> {
 
     fn format_token(&mut self, token: &izel_lexer::Token) {
         let text = &self.source[token.span.lo.0 as usize..token.span.hi.0 as usize];
-        
+
         // Exclude Eof
         if token.kind == TokenKind::Eof {
             return;
         }
 
-        let is_keyword = matches!(token.kind,
-            TokenKind::Shape | TokenKind::Forge | TokenKind::Scroll | TokenKind::Weave |
-            TokenKind::Ward | TokenKind::Impl | TokenKind::Dual | TokenKind::Alias |
-            TokenKind::Let | TokenKind::Open | TokenKind::Hidden | TokenKind::Given |
-            TokenKind::Else | TokenKind::Loop | TokenKind::While | TokenKind::Each |
-            TokenKind::In | TokenKind::Branch | TokenKind::Break |
-            TokenKind::Next | TokenKind::Give | TokenKind::Pure
+        let is_keyword = matches!(
+            token.kind,
+            TokenKind::Shape
+                | TokenKind::Forge
+                | TokenKind::Scroll
+                | TokenKind::Weave
+                | TokenKind::Ward
+                | TokenKind::Impl
+                | TokenKind::Dual
+                | TokenKind::Alias
+                | TokenKind::Let
+                | TokenKind::Open
+                | TokenKind::Hidden
+                | TokenKind::Given
+                | TokenKind::Else
+                | TokenKind::Loop
+                | TokenKind::While
+                | TokenKind::Each
+                | TokenKind::In
+                | TokenKind::Branch
+                | TokenKind::Break
+                | TokenKind::Next
+                | TokenKind::Give
+                | TokenKind::Pure
         );
 
-        let space_before = matches!(token.kind,
-            TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash |
-            TokenKind::Equal | TokenKind::EqEq | TokenKind::NotEq | TokenKind::Lt | 
-            TokenKind::Gt | TokenKind::Le | TokenKind::Ge | TokenKind::Arrow | TokenKind::FatArrow
+        let space_before = matches!(
+            token.kind,
+            TokenKind::Plus
+                | TokenKind::Minus
+                | TokenKind::Star
+                | TokenKind::Slash
+                | TokenKind::Equal
+                | TokenKind::EqEq
+                | TokenKind::NotEq
+                | TokenKind::Lt
+                | TokenKind::Gt
+                | TokenKind::Le
+                | TokenKind::Ge
+                | TokenKind::Arrow
+                | TokenKind::FatArrow
         );
 
-        let space_after = space_before || is_keyword || matches!(token.kind,
-            TokenKind::Comma | TokenKind::Colon
-        );
+        let space_after =
+            space_before || is_keyword || matches!(token.kind, TokenKind::Comma | TokenKind::Colon);
 
         // Don't add space before if previous token was parenthesis or similar structure? Wait, space_before handles operators.
         if space_before {

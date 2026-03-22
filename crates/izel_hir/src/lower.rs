@@ -6,6 +6,12 @@ pub struct HirLowerer {
     // In a real compiler, this would be populated by the Resolver
 }
 
+impl Default for HirLowerer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HirLowerer {
     pub fn new() -> Self {
         Self {}
@@ -21,7 +27,7 @@ impl HirLowerer {
 
     fn lower_item_to_vec(&self, item: &ast::Item, items: &mut Vec<HirItem>) {
         match item {
-            ast::Item::Forge(f) => items.push(HirItem::Forge(self.lower_forge(f))),
+            ast::Item::Forge(f) => items.push(HirItem::Forge(Box::new(self.lower_forge(f)))),
             ast::Item::Shape(s) => items.push(HirItem::Shape(self.lower_shape(s))),
             ast::Item::Scroll(s) => items.push(HirItem::Scroll(self.lower_scroll(s))),
             ast::Item::Dual(d) => {
@@ -63,10 +69,12 @@ impl HirLowerer {
     }
 
     fn lower_param(&self, param: &ast::Param) -> HirParam {
-         HirParam {
+        HirParam {
             name: param.name.clone(),
             def_id: izel_resolve::DefId(1), // Mock
             ty: Type::Error,
+            default_value: param.default_value.as_ref().map(|e| self.lower_expr(e)),
+            is_variadic: param.is_variadic,
             span: param.span,
         }
     }
@@ -81,8 +89,13 @@ impl HirLowerer {
 
     fn lower_stmt(&self, stmt: &ast::Stmt) -> HirStmt {
         match stmt {
-            ast::Stmt::Let { name, init, span, .. } => HirStmt::Let {
-                name: name.clone(),
+            ast::Stmt::Let {
+                pat, init, span, ..
+            } => HirStmt::Let {
+                name: match pat {
+                    ast::Pattern::Ident(n, _) => n.clone(),
+                    _ => "_hir_pattern_unsupported".to_string(),
+                },
                 def_id: izel_resolve::DefId(2), // Mock
                 ty: Type::Error,
                 init: init.as_ref().map(|e| self.lower_expr(e)),
@@ -95,21 +108,21 @@ impl HirLowerer {
     fn lower_expr(&self, expr: &ast::Expr) -> HirExpr {
         match expr {
             ast::Expr::Literal(lit) => HirExpr::Literal(lit.clone()),
-            ast::Expr::Ident(_name, span) => HirExpr::Ident(izel_resolve::DefId(3), Type::Error, *span),
+            ast::Expr::Ident(_name, span) => {
+                HirExpr::Ident(izel_resolve::DefId(3), Type::Error, *span)
+            }
             ast::Expr::Binary(op, left, right) => HirExpr::Binary(
                 op.clone(),
                 Box::new(self.lower_expr(left)),
                 Box::new(self.lower_expr(right)),
                 Type::Error,
             ),
-            ast::Expr::Unary(op, inner) => HirExpr::Unary(
-                op.clone(),
-                Box::new(self.lower_expr(inner)),
-                Type::Error,
-            ),
+            ast::Expr::Unary(op, inner) => {
+                HirExpr::Unary(op.clone(), Box::new(self.lower_expr(inner)), Type::Error)
+            }
             ast::Expr::Call(callee, args) => HirExpr::Call(
                 Box::new(self.lower_expr(callee)),
-                args.iter().map(|a| self.lower_expr(a)).collect(),
+                args.iter().map(|a| self.lower_expr(&a.value)).collect(),
                 vec![], // requires (to be populated by resolver)
                 Type::Error,
             ),
@@ -119,7 +132,11 @@ impl HirLowerer {
                 vec![],
                 Type::Error,
             ),
-            ast::Expr::Given { cond, then_block, else_expr } => HirExpr::Given {
+            ast::Expr::Given {
+                cond,
+                then_block,
+                else_expr,
+            } => HirExpr::Given {
                 cond: Box::new(self.lower_expr(cond)),
                 then_block: self.lower_block(then_block),
                 else_expr: else_expr.as_ref().map(|e| Box::new(self.lower_expr(e))),

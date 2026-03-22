@@ -16,6 +16,7 @@ members = [
     "crates/izel_lsp",
     "crates/izel_pm",
     "crates/izel_hir",
+    "tests", "crates/izel_opt", "crates/izel_query", "crates/izel_proc_macro", "crates/izel_lint", "crates/izel_doc", "crates/izel_std",
 ]
 
 [workspace.package]

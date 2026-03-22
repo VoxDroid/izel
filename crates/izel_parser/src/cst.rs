@@ -34,6 +34,7 @@ pub enum NodeKind {
     // Statements
     LetStmt,
     ExprStmt,
+    Pattern,
 
     // Expressions
     Literal,
@@ -56,6 +57,11 @@ pub enum NodeKind {
     MemberExpr,
     CascadeExpr,
     MacroCall,
+    Arg,
+    SeekExpr,
+    StaticDecl,
+    EchoDecl,
+    BridgeDecl,
 
     // Trivia & Tokens in CST
     Token(TokenKind),

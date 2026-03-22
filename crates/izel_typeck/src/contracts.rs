@@ -24,6 +24,10 @@ impl ContractChecker {
 
         for (i, req) in requires.iter().enumerate() {
             let res = eval_expr(req, &context);
+            println!(
+                "DEBUG: Checking @requires {:?} with context {:?} -> {:?}",
+                req, context, res
+            );
             if let ConstValue::Bool(false) = res {
                 diagnostics.push(
                     Diagnostic::error()
@@ -50,6 +54,10 @@ impl ContractChecker {
 
         for (i, ens) in ensures.iter().enumerate() {
             let res = eval_expr(ens, &context);
+            println!(
+                "DEBUG: Checking @ensures {:?} with context {:?} -> {:?}",
+                ens, context, res
+            );
             if let ConstValue::Bool(false) = res {
                 diagnostics.push(
                     Diagnostic::error()

@@ -25,6 +25,7 @@ tracing = { workspace = true }
 izel_fmt = { workspace = true }
 izel_lsp = { workspace = true }
 izel_pm = { workspace = true }
+izel_hir = { workspace = true }
 
 [[bin]]
 name = "izelc"

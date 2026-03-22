@@ -1,0 +1,45 @@
+// ⬡ IZEL — Standard Library Async/Flow Primitives
+// Provides core `flow` tasks and `tide` executors.
+
+shape Flow<T> {
+    // Internal handle to the suspending task state.
+    hidden handle: *mut void
+}
+
+impl<T> Flow<T> {
+    /// Creates a new asynchronous flow representing a deferred computation.
+    forge new() -> Flow<T> {
+        Flow {
+            handle: raw 0 as *mut void,
+        }
+    }
+
+    /// Awakens or polls the flow. In a real executor, this would advance the state machine.
+    open forge poll(&mut ~self) -> bool {
+        // Assume completion immediately for this stub
+        true
+    }
+}
+
+/// A basic `tide` executor to run `flow` tasks to completion.
+shape TideExecutor {
+    ~task_count: usize
+}
+
+impl TideExecutor {
+    open forge new() -> TideExecutor {
+        TideExecutor {
+            task_count: 0
+        }
+    }
+
+    /// Spawns a flow on this executor.
+    open forge spawn<T>(&mut ~self, task: Flow<T>) {
+        self.task_count = self.task_count + 1
+    }
+
+    /// Blocks the current thread until all spawned flows complete.
+    open forge run_until_stalled(&mut ~self) {
+        self.task_count = 0
+    }
+}

@@ -1,7 +1,7 @@
 use izel_parser::ast;
-use izel_typeck::type_system::Type;
-use izel_span::Span;
 use izel_resolve::DefId;
+use izel_span::Span;
+use izel_typeck::type_system::Type;
 
 pub mod lower;
 
@@ -12,7 +12,7 @@ pub struct HirModule {
 
 #[derive(Debug, Clone)]
 pub enum HirItem {
-    Forge(HirForge),
+    Forge(Box<HirForge>),
     Shape(HirShape),
     Scroll(HirScroll),
 }
@@ -48,6 +48,8 @@ pub struct HirParam {
     pub name: String,
     pub def_id: DefId,
     pub ty: Type,
+    pub default_value: Option<HirExpr>,
+    pub is_variadic: bool,
     pub span: Span,
 }
 
