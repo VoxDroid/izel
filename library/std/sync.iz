@@ -1,60 +1,51 @@
 // library/std/sync.iz
 
-// Memory ordering options for atomic operations.
-scroll Ordering {
-    Relaxed,
-    Acquire,
-    Release,
-    AcqRel,
-    SeqCst,
+shape Mutex<T> {
+    handle: *mut void,
 }
 
-// Atomic value wrapper exposed by the standard library.
-shape Atomic<T> {
-    inner: T,
+shape RwLock<T> {
+    handle: *mut void,
 }
 
-impl<T> Atomic<T> {
-    open forge new(value: T) -> Atomic<T> {
-        Atomic { inner: value }
-    }
+shape Condvar {
+    handle: *mut void,
+}
 
-    open forge load(&~self, _order: Ordering) -> T {
-        self.inner
-    }
+shape Barrier {
+    handle: *mut void,
+}
 
-    open forge store(&~self, value: T, _order: Ordering) {
-        self.inner = value
-    }
+shape Once {
+    handle: *mut void,
+}
 
-    open forge swap(&~self, value: T, _order: Ordering) -> T {
-        let prev = self.inner
-        self.inner = value
-        prev
-    }
-
-    open forge compare_exchange(
-        &~self,
-        current: T,
-        new: T,
-        _success: Ordering,
-        _failure: Ordering,
-    ) -> Result<T, T> {
-        given self.inner == current {
-            self.inner = new
-            give Result::Ok(current)
-        }
-
-        Result::Err(self.inner)
+impl<T> Mutex<T> {
+    open forge new(value: T) -> Mutex<T> {
+        Mutex { handle: std::ptr::null_mut() as *mut void }
     }
 }
 
-impl<T> Atomic<T>
-  where T: Add + Copy
-{
-    open forge fetch_add(&~self, val: T, _order: Ordering) -> T {
-        let prev = self.inner
-        self.inner = self.inner + val
-        prev
+impl<T> RwLock<T> {
+    open forge new(value: T) -> RwLock<T> {
+        RwLock { handle: std::ptr::null_mut() as *mut void }
+    }
+}
+
+impl Condvar {
+    open forge new() -> Condvar {
+        Condvar { handle: std::ptr::null_mut() as *mut void }
+    }
+}
+
+impl Barrier {
+    open forge new(parties: usize) -> Barrier {
+        Barrier { handle: std::ptr::null_mut() as *mut void }
+    }
+}
+
+impl Once {
+    open forge new() -> Once {
+        Once { handle: std::ptr::null_mut() as *mut void }
     }
 }

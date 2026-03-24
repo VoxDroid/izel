@@ -91,14 +91,39 @@ mod tests {
     fn std_concurrency_exposes_thread_and_channel_surface() {
         let thread_path =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../library/std/thread.iz");
+        let sync_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../library/std/sync.iz");
+        let atomic_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../library/std/atomic.iz");
+        let async_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../library/std/async.iz");
         let chan_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../library/std/chan.iz");
 
         let thread_src = fs::read_to_string(&thread_path)
             .unwrap_or_else(|e| panic!("failed to read {:?}: {}", thread_path, e));
+        let sync_src = fs::read_to_string(&sync_path)
+            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", sync_path, e));
+        let atomic_src = fs::read_to_string(&atomic_path)
+            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", atomic_path, e));
+        let async_src = fs::read_to_string(&async_path)
+            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", async_path, e));
         let chan_src = fs::read_to_string(&chan_path)
             .unwrap_or_else(|e| panic!("failed to read {:?}: {}", chan_path, e));
 
-        let required_thread = ["shape JoinHandle<", "forge join(", "forge spawn<"];
+        let required_thread = [
+            "shape JoinHandle<",
+            "forge join(",
+            "forge spawn<",
+            "forge sleep",
+            "forge park",
+        ];
+        let required_sync = [
+            "shape Mutex<",
+            "shape RwLock<",
+            "shape Condvar",
+            "shape Barrier",
+            "shape Once",
+        ];
+        let required_atomic = ["scroll Ordering", "shape Atomic<", "forge fetch_add("];
         let required_chan = [
             "shape Sender<",
             "shape Receiver<",
@@ -106,11 +131,33 @@ mod tests {
             "flow forge recv(",
             "forge new<",
         ];
+        let required_async = [
+            "shape Flow<",
+            "shape AsyncExecutor",
+            "forge join<",
+            "forge select<",
+        ];
 
         for symbol in required_thread {
             assert!(
                 thread_src.contains(symbol),
                 "missing std::thread declaration: {}",
+                symbol
+            );
+        }
+
+        for symbol in required_sync {
+            assert!(
+                sync_src.contains(symbol),
+                "missing std::sync declaration: {}",
+                symbol
+            );
+        }
+
+        for symbol in required_atomic {
+            assert!(
+                atomic_src.contains(symbol),
+                "missing std::atomic declaration: {}",
                 symbol
             );
         }
@@ -122,11 +169,20 @@ mod tests {
                 symbol
             );
         }
+
+        for symbol in required_async {
+            assert!(
+                async_src.contains(symbol),
+                "missing std::async declaration: {}",
+                symbol
+            );
+        }
     }
 
     #[test]
-    fn std_sync_exposes_atomic_surface() {
-        let sync_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../library/std/sync.iz");
+    fn std_atomic_exposes_surface() {
+        let sync_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../library/std/atomic.iz");
 
         let src = fs::read_to_string(&sync_path)
             .unwrap_or_else(|e| panic!("failed to read {:?}: {}", sync_path, e));
@@ -150,7 +206,7 @@ mod tests {
         for symbol in required {
             assert!(
                 src.contains(symbol),
-                "missing std::sync declaration: {}",
+                "missing std::atomic declaration: {}",
                 symbol
             );
         }

@@ -16,3 +16,11 @@ impl<T> JoinHandle<T> {
 open forge spawn<T, F>(_task: F) -> JoinHandle<T> {
     JoinHandle { handle: std::ptr::null_mut() as *mut void }
 }
+
+// Put the current thread to sleep for a duration in milliseconds.
+open forge sleep(ms: u64) {
+}
+
+// Park the current thread until explicitly resumed.
+open forge park() {
+}

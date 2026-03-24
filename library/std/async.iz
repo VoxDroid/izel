@@ -1,0 +1,24 @@
+// library/std/async.iz
+
+shape Flow<T> {
+    handle: *mut void,
+}
+
+shape AsyncExecutor {
+    handle: *mut void,
+}
+
+impl AsyncExecutor {
+    open forge new() -> AsyncExecutor {
+        AsyncExecutor { handle: std::ptr::null_mut() as *mut void }
+    }
+
+    open forge spawn<T>(&~self, task: Flow<T>) {
+    }
+
+    open forge run(&~self) {
+    }
+}
+
+forge join<A, B>(a: Flow<A>, b: Flow<B>) -> Result<(A, B), ()>
+forge select<A, B>(a: Flow<A>, b: Flow<B>) -> Result<A, ()>

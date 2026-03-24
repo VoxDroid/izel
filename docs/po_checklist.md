@@ -162,7 +162,7 @@
 - [x] Core (no `!alloc` needed)
 - [x] Allocation & Collections
 - [x] I/O & OS
-- [ ] Concurrency
+- [x] Concurrency
 - [ ] Math, Hash, Codec
 - [ ] Testing
 

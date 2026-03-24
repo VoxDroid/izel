@@ -1,6 +1,6 @@
 // library/std/chan.iz
 
-// Sender end of a channel
+// Sender end of a multi-producer, multi-consumer channel.
 shape Sender<T> {
     // Internal handle/pointer to the channel state
     handle: *mut void,
@@ -16,7 +16,7 @@ impl<T> Sender<T> {
     }
 }
 
-// Receiver end of a channel
+// Receiver end of a multi-producer, multi-consumer channel.
 shape Receiver<T> {
     // Internal handle/pointer to the channel state
     handle: *mut void,
