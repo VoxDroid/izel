@@ -593,6 +593,31 @@ impl TypeChecker {
         }
     }
 
+    fn validate_inline_asm_call(&mut self, args: &[ast::Arg]) {
+        if !self.in_raw_block {
+            self.diagnostics.push(
+                izel_diagnostics::Diagnostic::error()
+                    .with_message("asm! is only allowed inside raw blocks".to_string()),
+            );
+        }
+
+        if args.is_empty() {
+            self.diagnostics.push(
+                izel_diagnostics::Diagnostic::error()
+                    .with_message("asm! requires at least a template string argument".to_string()),
+            );
+            return;
+        }
+
+        if !matches!(args[0].value, ast::Expr::Literal(ast::Literal::Str(_))) {
+            self.diagnostics.push(
+                izel_diagnostics::Diagnostic::error().with_message(
+                    "asm! first argument must be a string literal template".to_string(),
+                ),
+            );
+        }
+    }
+
     fn check_echo(&mut self, e: &ast::Echo) {
         let body_effects = self.new_effect_var();
         self.current_effects.push(body_effects.clone());
@@ -2060,6 +2085,13 @@ impl TypeChecker {
                 self.new_var()
             }
             ast::Expr::Call(callee, args) => {
+                if let ast::Expr::Ident(name, _) = callee.as_ref() {
+                    if name == "asm" {
+                        self.validate_inline_asm_call(args);
+                        return Type::Prim(PrimType::Void);
+                    }
+                }
+
                 if let ast::Expr::Member(obj, method, _) = callee.as_ref() {
                     if method == "allocator" && args.is_empty() {
                         if let ast::Expr::Ident(name, _) = obj.as_ref() {
@@ -3293,6 +3325,71 @@ mod tests {
                 .iter()
                 .any(|d| d.message.contains("cannot define an initializer")),
             "bridge static initializer should produce a diagnostic"
+        );
+    }
+
+    #[test]
+    fn test_inline_asm_allowed_in_raw_block() {
+        let source = "forge ok() -> void { raw { asm!(\"nop\") } }";
+        let tokens = tokenize(source);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
+        parser.source = source.to_string();
+        let cst = parser.parse_decl();
+        let lowerer = izel_ast_lower::Lowerer::new(source);
+        let items = lowerer.lower_item(&cst);
+        let module = ast::Module { items };
+
+        let mut tc = TypeChecker::new();
+        tc.check_ast(&module);
+
+        assert!(
+            tc.diagnostics.is_empty(),
+            "asm! should be accepted in raw blocks, diagnostics: {:?}",
+            tc.diagnostics
+        );
+    }
+
+    #[test]
+    fn test_inline_asm_rejected_outside_raw_block() {
+        let source = "forge bad() -> void { asm!(\"nop\") }";
+        let tokens = tokenize(source);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
+        parser.source = source.to_string();
+        let cst = parser.parse_decl();
+        let lowerer = izel_ast_lower::Lowerer::new(source);
+        let items = lowerer.lower_item(&cst);
+        let module = ast::Module { items };
+
+        let mut tc = TypeChecker::new();
+        tc.check_ast(&module);
+
+        assert!(
+            tc.diagnostics
+                .iter()
+                .any(|d| d.message.contains("asm! is only allowed inside raw blocks")),
+            "asm! outside raw block should produce a diagnostic"
+        );
+    }
+
+    #[test]
+    fn test_inline_asm_requires_string_template() {
+        let source = "forge bad() -> void { raw { asm!(1) } }";
+        let tokens = tokenize(source);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
+        parser.source = source.to_string();
+        let cst = parser.parse_decl();
+        let lowerer = izel_ast_lower::Lowerer::new(source);
+        let items = lowerer.lower_item(&cst);
+        let module = ast::Module { items };
+
+        let mut tc = TypeChecker::new();
+        tc.check_ast(&module);
+
+        assert!(
+            tc.diagnostics.iter().any(|d| d
+                .message
+                .contains("asm! first argument must be a string literal template")),
+            "asm! template must be a string literal"
         );
     }
 

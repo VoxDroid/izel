@@ -1282,6 +1282,20 @@ impl<'a> Lowerer<'a> {
 
                     let location_string = format!("{}:{}", "main.iz", line_number);
                     ast::Expr::Literal(ast::Literal::Str(location_string))
+                } else if macro_name == "asm" {
+                    // Keep inline assembly as a first-class builtin call for later semantic checks.
+                    let call_args = args
+                        .into_iter()
+                        .map(|value| ast::Arg {
+                            label: None,
+                            value,
+                            span: node.span(),
+                        })
+                        .collect();
+                    ast::Expr::Call(
+                        Box::new(ast::Expr::Ident("asm".to_string(), node.span())),
+                        call_args,
+                    )
                 } else if let Some(macro_decl) = self.macros.borrow().get(&macro_name).cloned() {
                     self.expand_macro_call(&macro_decl, &args)
                 } else {

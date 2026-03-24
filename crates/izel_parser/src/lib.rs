@@ -1236,7 +1236,11 @@ impl Parser {
         let mut children = vec![];
         children.push(SyntaxElement::Token(self.bump())); // raw
         children.extend(self.eat_trivia());
-        children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+        if self.current_kind() == TokenKind::OpenBrace {
+            children.push(SyntaxElement::Node(self.parse_block()));
+        } else {
+            children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+        }
         SyntaxNode::new(NodeKind::RawExpr, children)
     }
 
