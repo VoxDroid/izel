@@ -41,6 +41,7 @@ pub struct TypeChecker {
     pub shape_invariants: FxHashMap<String, Vec<ast::Expr>>,
     pub shape_layouts: FxHashMap<String, ShapeLayout>,
     pub custom_error_types: std::collections::HashSet<String>,
+    pub effect_boundaries: FxHashMap<String, Vec<Effect>>,
     pub method_env: FxHashMap<String, FxHashMap<String, Vec<Scheme>>>,
     pub current_self: Option<Type>,
     pub in_flow_context: bool,
@@ -79,6 +80,7 @@ impl TypeChecker {
             shape_invariants: FxHashMap::default(),
             shape_layouts: FxHashMap::default(),
             custom_error_types: std::collections::HashSet::default(),
+            effect_boundaries: FxHashMap::default(),
             method_env: FxHashMap::default(),
             current_self: None,
             in_flow_context: false,
@@ -574,6 +576,13 @@ impl TypeChecker {
                         f.name
                     )));
                 }
+
+                let boundary_effects = self.parse_effect_boundary_attr(&f.attributes, &f.name);
+                if !boundary_effects.is_empty() {
+                    self.effect_boundaries
+                        .insert(f.name.clone(), boundary_effects);
+                }
+
                 let scheme = self.collect_forge_signature(f);
                 self.register_overload(f.name.clone(), scheme.clone());
                 self.define_scheme(f.name.clone(), scheme.clone());
@@ -727,6 +736,109 @@ impl TypeChecker {
 
     fn has_error_attr(&self, attrs: &[ast::Attribute]) -> bool {
         attrs.iter().any(|a| a.name == "error")
+    }
+
+    fn parse_effect_name(&self, name: &str) -> Effect {
+        match name {
+            "io" => Effect::IO,
+            "net" => Effect::Net,
+            "alloc" => Effect::Alloc,
+            "panic" => Effect::Panic,
+            "unsafe" => Effect::Unsafe,
+            "time" => Effect::Time,
+            "rand" => Effect::Rand,
+            "env" => Effect::Env,
+            "ffi" => Effect::Ffi,
+            "thread" => Effect::Thread,
+            "mut" => Effect::Mut,
+            "pure" => Effect::Pure,
+            _ => Effect::User(name.to_string()),
+        }
+    }
+
+    fn parse_effect_boundary_attr(
+        &mut self,
+        attrs: &[ast::Attribute],
+        owner_name: &str,
+    ) -> Vec<Effect> {
+        let mut contained = Vec::new();
+
+        for attr in attrs {
+            if attr.name != "effect_boundary" {
+                continue;
+            }
+
+            if attr.args.is_empty() {
+                self.diagnostics.push(
+                    izel_diagnostics::Diagnostic::error().with_message(format!(
+                        "forge '{}' has invalid #[effect_boundary] usage: expected at least one effect name",
+                        owner_name
+                    )),
+                );
+                continue;
+            }
+
+            for arg in &attr.args {
+                let effect_name = match arg {
+                    ast::Expr::Ident(n, _) => Some(n.clone()),
+                    ast::Expr::Path(parts, _) if !parts.is_empty() => Some(parts.join("::")),
+                    _ => None,
+                };
+
+                let Some(effect_name) = effect_name else {
+                    self.diagnostics.push(
+                        izel_diagnostics::Diagnostic::error().with_message(format!(
+                            "forge '{}' has invalid #[effect_boundary] argument: expected effect identifier",
+                            owner_name
+                        )),
+                    );
+                    continue;
+                };
+
+                let effect = self.parse_effect_name(&effect_name);
+                if !contained.contains(&effect) {
+                    contained.push(effect);
+                }
+            }
+        }
+
+        contained
+    }
+
+    fn apply_effect_boundary(&self, effects: &EffectSet, boundaries: &[Effect]) -> EffectSet {
+        let effects = self.prune_effects(effects);
+        match effects {
+            EffectSet::Concrete(v) => {
+                let mut filtered: Vec<Effect> =
+                    v.into_iter().filter(|e| !boundaries.contains(e)).collect();
+
+                if filtered.is_empty() {
+                    filtered.push(Effect::Pure);
+                }
+                EffectSet::Concrete(filtered)
+            }
+            EffectSet::Row(vals, tail) => {
+                let vals: Vec<Effect> = vals
+                    .into_iter()
+                    .filter(|e| !boundaries.contains(e))
+                    .collect();
+                let tail = self.apply_effect_boundary(&tail, boundaries);
+                EffectSet::Row(vals, Box::new(tail))
+            }
+            EffectSet::Var(_) | EffectSet::Param(_) => effects,
+        }
+    }
+
+    fn apply_boundaries_for_callee(&self, callee: &ast::Expr, effects: &EffectSet) -> EffectSet {
+        let mut masked = effects.clone();
+
+        if let ast::Expr::Ident(name, _) = callee {
+            if let Some(boundaries) = self.effect_boundaries.get(name) {
+                masked = self.apply_effect_boundary(&masked, boundaries);
+            }
+        }
+
+        masked
     }
 
     fn extract_shape_layout(&mut self, s: &ast::Shape) -> ShapeLayout {
@@ -1627,7 +1739,8 @@ impl TypeChecker {
                 {
                     let current = self.current_effects.last().cloned();
                     if let Some(curr) = current {
-                        self.accumulate_effects(&curr, &effects);
+                        let bounded = self.apply_boundaries_for_callee(callee, &effects);
+                        self.accumulate_effects(&curr, &bounded);
                     }
 
                     for (at, pty) in effective_arg_tys.iter().zip(params.iter()) {
@@ -2023,7 +2136,8 @@ impl TypeChecker {
         {
             let current = self.current_effects.last().cloned();
             if let Some(curr) = current {
-                self.accumulate_effects(&curr, &effects);
+                let bounded = self.apply_boundaries_for_callee(callee, &effects);
+                self.accumulate_effects(&curr, &bounded);
             }
 
             let mut mapping = std::collections::HashMap::new();
@@ -3277,6 +3391,87 @@ mod tests {
             "Pure function should NOT allow IO effect"
         );
     }
+
+    #[test]
+    fn test_effect_boundary_masks_contained_effects() {
+        let mut tc = TypeChecker::new();
+        use izel_span::Span;
+
+        tc.define(
+            "io_capture".to_string(),
+            Type::Function {
+                params: vec![],
+                ret: Box::new(Type::Prim(PrimType::Void)),
+                effects: EffectSet::Concrete(vec![Effect::IO]),
+            },
+        );
+        tc.effect_boundaries
+            .insert("io_capture".to_string(), vec![Effect::IO]);
+
+        let outer = tc.new_effect_var();
+        tc.current_effects.push(outer.clone());
+        tc.infer_expr(&ast::Expr::Call(
+            Box::new(ast::Expr::Ident("io_capture".to_string(), Span::dummy())),
+            vec![],
+        ));
+        let collected = tc.current_effects.pop().unwrap();
+
+        assert!(
+            !tc.has_effect(&collected, &Effect::IO),
+            "effect boundary should prevent IO from escaping to caller"
+        );
+    }
+
+    #[test]
+    fn test_effect_boundary_attr_registration() {
+        let source = "#[effect_boundary(io)] forge cap() !io { give }";
+        let tokens = tokenize(source);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
+        parser.source = source.to_string();
+        let cst = parser.parse_decl();
+        let lowerer = izel_ast_lower::Lowerer::new(source);
+        let items = lowerer.lower_item(&cst);
+        let module = ast::Module { items };
+
+        let mut tc = TypeChecker::new();
+        tc.check_ast(&module);
+
+        let contained = tc
+            .effect_boundaries
+            .get("cap")
+            .expect("effect boundary should be registered");
+        assert!(
+            contained.contains(&Effect::IO),
+            "registered effect boundary should contain IO"
+        );
+        assert!(
+            tc.diagnostics.is_empty(),
+            "valid effect_boundary attribute should not emit diagnostics"
+        );
+    }
+
+    #[test]
+    fn test_effect_boundary_attr_requires_args() {
+        let source = "#[effect_boundary] forge cap() !io { give }";
+        let tokens = tokenize(source);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
+        parser.source = source.to_string();
+        let cst = parser.parse_decl();
+        let lowerer = izel_ast_lower::Lowerer::new(source);
+        let items = lowerer.lower_item(&cst);
+        let module = ast::Module { items };
+
+        let mut tc = TypeChecker::new();
+        tc.check_ast(&module);
+
+        assert!(
+            tc.diagnostics
+                .iter()
+                .any(|d| d.message.contains("expected at least one effect name")),
+            "missing effect_boundary arguments must produce diagnostic"
+        );
+    }
+
     #[test]
     fn test_witness_system() {
         let mut tc = TypeChecker::new();
