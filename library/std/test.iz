@@ -1,0 +1,9 @@
+// library/std/test.iz
+
+// Test ward declarations for unit/integration test annotations and assertions.
+#[test]
+macro assert!(cond, msg)
+macro assert_eq!(left, right)
+macro should_panic!(expr)
+
+open forge run_test(name: str, body: forge() -> void)

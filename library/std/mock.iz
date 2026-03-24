@@ -1,0 +1,16 @@
+// library/std/mock.iz
+
+// Mockable weave stubs for effect testing.
+weave MockEffect {
+    forge expect_call(&~self, name: str)
+    forge verify(&~self) -> bool
+}
+
+shape MockRuntime {
+}
+
+impl MockRuntime {
+    open forge new() -> MockRuntime {
+        MockRuntime {}
+    }
+}

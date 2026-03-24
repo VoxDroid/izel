@@ -411,4 +411,41 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn std_testing_exposes_surface() {
+        let checks: [(&str, &[&str]); 3] = [
+            (
+                "test.iz",
+                &["#[test]", "assert!", "assert_eq!", "should_panic!"],
+            ),
+            (
+                "bench.iz",
+                &["#[bench]", "shape Bencher", "forge black_box"],
+            ),
+            (
+                "mock.iz",
+                &[
+                    "Mockable weave stubs for effect testing",
+                    "weave MockEffect",
+                ],
+            ),
+        ];
+
+        for (file_name, required) in checks {
+            let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join(format!("../../library/std/{}", file_name));
+            let src = fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+
+            for symbol in required {
+                assert!(
+                    src.contains(symbol),
+                    "missing std::{} declaration: {}",
+                    file_name,
+                    symbol
+                );
+            }
+        }
+    }
 }

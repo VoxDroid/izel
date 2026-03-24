@@ -1,0 +1,16 @@
+// library/std/bench.iz
+
+// Benchmark ward declarations.
+#[bench]
+shape Bencher {
+    ~iters: usize,
+}
+
+impl Bencher {
+    open forge iter(&~self, _f: forge() -> void) {
+    }
+}
+
+open forge black_box<T>(value: T) -> T {
+    value
+}

@@ -164,7 +164,7 @@
 - [x] I/O & OS
 - [x] Concurrency
 - [x] Math, Hash, Codec
-- [ ] Testing
+- [x] Testing
 
 ## 32. Toolchain
 - [x] `izelc` — Compiler Binary
