@@ -75,7 +75,7 @@
 ## 14. Iterators & Pipelines
 - [x] 14.1 The `|>` Operator
 - [x] 14.2 Full Combinator List (std::iter)
-- [ ] 14.3 Custom Iterators
+- [x] 14.3 Custom Iterators
 
 ## 15. Error Handling — Cascade Errors
 - [x] 15.1 Result<T, E> and Error Propagation

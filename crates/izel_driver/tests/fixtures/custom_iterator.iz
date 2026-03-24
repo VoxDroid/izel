@@ -1,0 +1,28 @@
+draw std::iter::*
+
+shape Counter {
+    ~n: i32
+    limit: i32
+}
+
+impl Iterator for Counter {
+    type Item = i32
+
+    forge next(&~self) -> ?i32 {
+        given self.n < self.limit {
+            let out = self.n
+            self.n = self.n + 1
+            give Some(out)
+        }
+        None
+    }
+}
+
+forge main() -> void {
+    let ~it = Counter { n: 0, limit: 3 }
+
+    let _a = it.next()
+    let _b = it.next()
+    let _c = it.next()
+    let _d = it.next()
+}
