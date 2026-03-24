@@ -42,6 +42,7 @@ pub struct TypeChecker {
     pub shape_layouts: FxHashMap<String, ShapeLayout>,
     pub custom_error_types: std::collections::HashSet<String>,
     pub effect_boundaries: FxHashMap<String, Vec<Effect>>,
+    zone_scope_depth: usize,
     pub method_env: FxHashMap<String, FxHashMap<String, Vec<Scheme>>>,
     pub current_self: Option<Type>,
     pub in_flow_context: bool,
@@ -81,6 +82,7 @@ impl TypeChecker {
             shape_layouts: FxHashMap::default(),
             custom_error_types: std::collections::HashSet::default(),
             effect_boundaries: FxHashMap::default(),
+            zone_scope_depth: 0,
             method_env: FxHashMap::default(),
             current_self: None,
             in_flow_context: false,
@@ -337,7 +339,6 @@ impl TypeChecker {
     }
 
     fn check_forge(&mut self, f: &ast::Forge) {
-        dbg!(&f.name, &self.current_self);
         self.push_scope();
         let old_flow = self.in_flow_context;
         self.in_flow_context = f.is_flow;
@@ -357,9 +358,6 @@ impl TypeChecker {
                 if let Some(target) = &self.current_self {
                     pty = target.clone();
                 }
-            }
-            if param.name == "self" {
-                dbg!(&param.name, &pty);
             }
             self.define(param.name.clone(), pty.clone());
         }
@@ -1152,7 +1150,6 @@ impl TypeChecker {
     fn lower_ast_type(&mut self, ty: &ast::Type) -> Type {
         let res = match ty {
             ast::Type::Prim(s) => {
-                dbg!(s);
                 match s.as_str() {
                     "int" | "i32" => Type::Prim(PrimType::I32),
                     "never" => Type::Prim(PrimType::Never),
@@ -1251,7 +1248,6 @@ impl TypeChecker {
             }
             ast::Type::Error => Type::Error,
         };
-        dbg!(&res);
         res
     }
 
@@ -1547,8 +1543,26 @@ impl TypeChecker {
     }
 
     fn is_proof_mode(&self) -> bool {
-        let res = self.in_raw_block || self.current_attributes.iter().any(|a| a.name == "proof");
-        res
+        self.in_raw_block || self.current_attributes.iter().any(|a| a.name == "proof")
+    }
+
+    fn resolve_zone_allocator_accessor(&mut self, segments: &[String]) -> Option<Type> {
+        if segments.len() != 2 || segments[1] != "allocator" {
+            return None;
+        }
+
+        if segments[0] == "zone" {
+            if self.zone_scope_depth > 0 {
+                return Some(Type::Prim(PrimType::ZoneAllocator));
+            }
+            return None;
+        }
+
+        if let Some(Type::Prim(PrimType::ZoneAllocator)) = self.resolve_name(&segments[0]) {
+            return Some(Type::Prim(PrimType::ZoneAllocator));
+        }
+
+        None
     }
 
     fn prune(&self, ty: &Type) -> Type {
@@ -1589,9 +1603,6 @@ impl TypeChecker {
             },
             ast::Expr::Ident(name, _) => {
                 let res = self.resolve_name(name);
-                if name == "self" {
-                    dbg!(name, &res);
-                }
                 if let Some(ty) = res {
                     ty
                 } else {
@@ -1701,6 +1712,52 @@ impl TypeChecker {
                 self.new_var()
             }
             ast::Expr::Call(callee, args) => {
+                if let ast::Expr::Member(obj, method, _) = callee.as_ref() {
+                    if method == "allocator" && args.is_empty() {
+                        if let ast::Expr::Ident(name, _) = obj.as_ref() {
+                            if name == "zone" {
+                                if self.zone_scope_depth > 0 {
+                                    return Type::Prim(PrimType::ZoneAllocator);
+                                }
+                                self.diagnostics.push(
+                                    izel_diagnostics::Diagnostic::error().with_message(
+                                        "zone::allocator() is only available inside a zone block"
+                                            .to_string(),
+                                    ),
+                                );
+                                return Type::Error;
+                            }
+
+                            if let Some(Type::Prim(PrimType::ZoneAllocator)) =
+                                self.resolve_name(name)
+                            {
+                                return Type::Prim(PrimType::ZoneAllocator);
+                            }
+                        }
+                    }
+                }
+
+                if let ast::Expr::Path(segments, _) = callee.as_ref() {
+                    if args.is_empty() {
+                        if let Some(ty) = self.resolve_zone_allocator_accessor(segments) {
+                            return ty;
+                        }
+
+                        if segments.len() == 2
+                            && segments[0] == "zone"
+                            && segments[1] == "allocator"
+                        {
+                            self.diagnostics.push(
+                                izel_diagnostics::Diagnostic::error().with_message(
+                                    "zone::allocator() is only available inside a zone block"
+                                        .to_string(),
+                                ),
+                            );
+                            return Type::Error;
+                        }
+                    }
+                }
+
                 let mut effective_args = args.clone();
                 if let ast::Expr::Member(obj, _, span) = callee.as_ref() {
                     effective_args.insert(
@@ -1912,6 +1969,7 @@ impl TypeChecker {
             }
             ast::Expr::Zone { name, body } => {
                 self.push_scope();
+                self.zone_scope_depth += 1;
                 // Bind `<name>::allocator()` equivalent.
                 // For now we just bind the name itself to a ZoneAllocator handle
                 self.define(name.clone(), Type::Prim(PrimType::ZoneAllocator));
@@ -1919,6 +1977,7 @@ impl TypeChecker {
                 let res_ty = self.new_var();
                 self.check_block_with_expected(body, Some(&res_ty));
 
+                self.zone_scope_depth -= 1;
                 self.pop_scope();
                 res_ty
             }
@@ -3360,6 +3419,53 @@ mod tests {
 
         // After exiting the zone, 'temp' should not be resolvable
         assert_eq!(checker.resolve_name("temp"), None);
+    }
+
+    #[test]
+    fn test_zone_allocator_accessor_available_in_zone_scope() {
+        let source = r#"
+            forge main() {
+                zone batch {
+                    let alloc = zone::allocator()
+                    let alloc2 = batch::allocator()
+                }
+            }
+        "#;
+        let tokens = tokenize(source);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
+        parser.source = source.to_string();
+        let cst = parser.parse_source_file();
+        let lowerer = izel_ast_lower::Lowerer::new(source);
+        let ast = lowerer.lower_module(&cst);
+
+        let mut tc = TypeChecker::new();
+        tc.check_ast(&ast);
+
+        assert!(
+            tc.diagnostics.is_empty(),
+            "zone allocator accessor forms should typecheck inside zone scope, diagnostics: {:?}",
+            tc.diagnostics
+        );
+    }
+
+    #[test]
+    fn test_zone_allocator_accessor_rejected_outside_zone_scope() {
+        let mut tc = TypeChecker::new();
+        let expr = ast::Expr::Call(
+            Box::new(ast::Expr::Path(
+                vec!["zone".to_string(), "allocator".to_string()],
+                vec![],
+            )),
+            vec![],
+        );
+        let _ = tc.infer_expr(&expr);
+
+        assert!(
+            tc.diagnostics.iter().any(|d| d
+                .message
+                .contains("zone::allocator() is only available inside a zone block")),
+            "zone::allocator() outside zone scope must produce a diagnostic"
+        );
     }
 
     #[test]

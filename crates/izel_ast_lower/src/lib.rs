@@ -1133,19 +1133,32 @@ impl<'a> Lowerer<'a> {
                 ast::Expr::Member(Box::new(target), name, node.span())
             }
             NodeKind::PathExpr => {
+                fn collect_path_idents(node: &SyntaxNode, source: &str, out: &mut Vec<String>) {
+                    for child in &node.children {
+                        match child {
+                            SyntaxElement::Token(t) if t.kind == TokenKind::Ident => {
+                                out.push(
+                                    source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string(),
+                                );
+                            }
+                            SyntaxElement::Node(n)
+                                if n.kind == NodeKind::Ident || n.kind == NodeKind::PathExpr =>
+                            {
+                                collect_path_idents(n, source, out);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
                 let mut path = Vec::new();
                 let mut generic_args = Vec::new();
+                collect_path_idents(node, self.source, &mut path);
                 for child in &node.children {
-                    match child {
-                        SyntaxElement::Token(t) if t.kind == TokenKind::Ident => {
-                            path.push(
-                                self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string(),
-                            );
-                        }
-                        SyntaxElement::Node(n) if n.kind == NodeKind::GenericArgs => {
+                    if let SyntaxElement::Node(n) = child {
+                        if n.kind == NodeKind::GenericArgs {
                             generic_args = self.lower_generic_args(n);
                         }
-                        _ => {}
                     }
                 }
                 ast::Expr::Path(path, generic_args)

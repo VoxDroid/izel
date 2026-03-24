@@ -102,7 +102,7 @@
 - [x] Verification and Enforcement of Constraints
 
 ## 20. Memory Zones
-- [ ] Zones syntax and lifetimes
+- [x] Zones syntax and lifetimes
 
 ## 21. Duality Types
 - [ ] Dual shapes parsing and elaboration
