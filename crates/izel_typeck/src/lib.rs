@@ -41,6 +41,7 @@ pub struct TypeChecker {
     pub shape_invariants: FxHashMap<String, Vec<ast::Expr>>,
     pub shape_layouts: FxHashMap<String, ShapeLayout>,
     pub custom_error_types: std::collections::HashSet<String>,
+    pub derived_weaves: FxHashMap<String, std::collections::HashSet<String>>,
     pub effect_boundaries: FxHashMap<String, Vec<Effect>>,
     zone_scope_depth: usize,
     pub method_env: FxHashMap<String, FxHashMap<String, Vec<Scheme>>>,
@@ -81,6 +82,7 @@ impl TypeChecker {
             shape_invariants: FxHashMap::default(),
             shape_layouts: FxHashMap::default(),
             custom_error_types: std::collections::HashSet::default(),
+            derived_weaves: FxHashMap::default(),
             effect_boundaries: FxHashMap::default(),
             zone_scope_depth: 0,
             method_env: FxHashMap::default(),
@@ -345,6 +347,77 @@ impl TypeChecker {
                 );
             }
         }
+    }
+
+    fn validate_shape_derives(&mut self, shape: &ast::Shape) {
+        let mut derives = std::collections::HashSet::new();
+
+        for attr in &shape.attributes {
+            if attr.name != "derive" {
+                continue;
+            }
+
+            if attr.args.is_empty() {
+                self.diagnostics
+                    .push(izel_diagnostics::Diagnostic::error().with_message(format!(
+                        "#[derive] on shape '{}' requires at least one derive target",
+                        shape.name
+                    )));
+                continue;
+            }
+
+            for arg in &attr.args {
+                let derive_name = match arg {
+                    ast::Expr::Ident(name, _) => Some(name.clone()),
+                    ast::Expr::Path(parts, _) if !parts.is_empty() => parts.last().cloned(),
+                    _ => None,
+                };
+
+                let Some(name) = derive_name else {
+                    self.diagnostics
+                        .push(izel_diagnostics::Diagnostic::error().with_message(format!(
+                            "invalid derive target on shape '{}': expected identifier",
+                            shape.name
+                        )));
+                    continue;
+                };
+
+                if !Self::is_supported_builtin_derive(&name) {
+                    self.diagnostics
+                        .push(izel_diagnostics::Diagnostic::error().with_message(format!(
+                            "unsupported built-in derive '{}' on shape '{}'",
+                            name, shape.name
+                        )));
+                    continue;
+                }
+
+                derives.insert(name);
+            }
+        }
+
+        if !derives.is_empty() {
+            self.derived_weaves.insert(shape.name.clone(), derives);
+        }
+    }
+
+    fn is_supported_builtin_derive(name: &str) -> bool {
+        matches!(
+            name,
+            "Debug"
+                | "Display"
+                | "Clone"
+                | "Copy"
+                | "Eq"
+                | "PartialEq"
+                | "Ord"
+                | "PartialOrd"
+                | "Hash"
+                | "Default"
+                | "Serialize"
+                | "Deserialize"
+                | "Builder"
+                | "Error"
+        )
     }
 
     fn check_echo(&mut self, e: &ast::Echo) {
@@ -721,6 +794,7 @@ impl TypeChecker {
                 }
                 let layout = self.extract_shape_layout(s);
                 self.shape_layouts.insert(s.name.clone(), layout);
+                self.validate_shape_derives(s);
 
                 self.push_scope();
                 let mut bounds = Vec::new();
@@ -3408,6 +3482,58 @@ mod tests {
             tc.diagnostics.is_empty(),
             "declarative macro expansion should typecheck cleanly, diagnostics: {:?}",
             tc.diagnostics
+        );
+    }
+
+    #[test]
+    fn test_builtin_derives_are_accepted_on_shape() {
+        let source = "#[derive(Debug, Clone, Eq, Default)] shape User { id: i32, }";
+        let tokens = tokenize(source);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
+        parser.source = source.to_string();
+        let cst = parser.parse_decl();
+        let lowerer = izel_ast_lower::Lowerer::new(source);
+        let items = lowerer.lower_item(&cst);
+        let module = ast::Module { items };
+
+        let mut tc = TypeChecker::new();
+        tc.check_ast(&module);
+
+        assert!(
+            tc.diagnostics.is_empty(),
+            "supported derives should not emit diagnostics: {:?}",
+            tc.diagnostics
+        );
+
+        let recorded = tc
+            .derived_weaves
+            .get("User")
+            .expect("derived weaves should be recorded for shape");
+        assert!(recorded.contains("Debug"));
+        assert!(recorded.contains("Clone"));
+        assert!(recorded.contains("Eq"));
+        assert!(recorded.contains("Default"));
+    }
+
+    #[test]
+    fn test_unknown_builtin_derive_is_rejected() {
+        let source = "#[derive(Magic)] shape User { id: i32, }";
+        let tokens = tokenize(source);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
+        parser.source = source.to_string();
+        let cst = parser.parse_decl();
+        let lowerer = izel_ast_lower::Lowerer::new(source);
+        let items = lowerer.lower_item(&cst);
+        let module = ast::Module { items };
+
+        let mut tc = TypeChecker::new();
+        tc.check_ast(&module);
+
+        assert!(
+            tc.diagnostics
+                .iter()
+                .any(|d| d.message.contains("unsupported built-in derive 'Magic'")),
+            "unknown derive should emit diagnostic"
         );
     }
 

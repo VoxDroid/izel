@@ -117,7 +117,7 @@
 
 ## 24. Macros & Meta-Programming
 - [x] 24.1 Declarative Macros
-- [ ] 24.2 `#[derive(...)]` — Built-in Derivable Weaves
+- [x] 24.2 `#[derive(...)]` — Built-in Derivable Weaves
 - [ ] 24.3 Attribute Macros
 
 ## 25. Concurrency & Async — `flow` / `tide`
