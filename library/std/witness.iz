@@ -1,0 +1,48 @@
+// ⬡ IZEL — Built-in Witness Types
+// Surface declarations for NonZero<T>, InBounds<T>, and Sorted<T>.
+
+shape NonZero<T> {
+    value: T
+}
+
+shape InBounds<T> {
+    value: T
+}
+
+shape Sorted<T> {
+    value: T
+}
+
+impl<T> NonZero<T> {
+    // Returns nil when the value does not satisfy the non-zero predicate.
+    #[intrinsic("nonzero_new")]
+    forge new(value: T) -> ?NonZero<T>
+
+    // Panics when the value does not satisfy the non-zero predicate.
+    #[intrinsic("nonzero_assert")]
+    forge assert(value: T) -> NonZero<T> !panic
+
+    forge value(&~self) -> T {
+        self.value
+    }
+}
+
+impl<T> InBounds<T> {
+    forge value(&~self) -> T {
+        self.value
+    }
+}
+
+impl<T> Sorted<T> {
+    forge value(&~self) -> T {
+        self.value
+    }
+}
+
+impl<T> Vec<T> {
+    #[intrinsic("vec_check_index")]
+    forge check_index(&~self, idx: usize) -> ?InBounds<usize>
+
+    #[intrinsic("vec_into_sorted")]
+    forge into_sorted(self) -> Sorted<Vec<T>>
+}

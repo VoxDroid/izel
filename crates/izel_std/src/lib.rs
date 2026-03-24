@@ -60,4 +60,30 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn std_witness_exposes_builtin_surface() {
+        let witness_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../library/std/witness.iz");
+        let src = fs::read_to_string(&witness_path)
+            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", witness_path, e));
+
+        let required = [
+            "shape NonZero<",
+            "shape InBounds<",
+            "shape Sorted<",
+            "forge new(value: T) -> ?NonZero<T>",
+            "forge assert(value: T) -> NonZero<T> !panic",
+            "forge check_index(&~self, idx: usize) -> ?InBounds<usize>",
+            "forge into_sorted(self) -> Sorted<Vec<T>>",
+        ];
+
+        for symbol in required {
+            assert!(
+                src.contains(symbol),
+                "missing std::witness built-in declaration: {}",
+                symbol
+            );
+        }
+    }
 }

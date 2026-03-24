@@ -94,7 +94,7 @@
 - [x] 17.5 Effect-Based Testing
 
 ## 18. Witness Types
-- [ ] 18.1 Built-in Witnesses
+- [x] 18.1 Built-in Witnesses
 - [ ] 18.2 Using Witnesses to Eliminate Runtime Checks
 - [ ] 18.3 Custom Witnesses
 
