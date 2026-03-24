@@ -511,6 +511,27 @@ impl<'ctx, 'a> Codegen<'ctx, 'a> {
                 let res = self.builder.build_not(val, "not")?;
                 self.builder.build_return(Some(&res))?;
             }
+            "simd_i32x4_sum" => {
+                let v4i32 = self.context.i32_type().vec_type(4);
+
+                let mut vec = v4i32.get_undef();
+                for i in 0..4u32 {
+                    let lane = function.get_nth_param(i).unwrap().into_int_value();
+                    vec = self.builder.build_insert_element(
+                        vec,
+                        lane,
+                        self.context.i32_type().const_int(i as u64, false),
+                        "ins",
+                    )?;
+                }
+
+                let reduce_add = self.get_intrinsic("llvm.vector.reduce.add.v4i32")?;
+                let call = self
+                    .builder
+                    .build_call(reduce_add, &[vec.into()], "simd_reduce_add")?;
+                let sum = call.try_as_basic_value().left().unwrap().into_int_value();
+                self.builder.build_return(Some(&sum))?;
+            }
             _ => {
                 return Err(anyhow!("Unknown intrinsic: {}", name));
             }
@@ -582,6 +603,11 @@ impl<'ctx, 'a> Codegen<'ctx, 'a> {
             }
             "llvm.floor.f64" => {
                 let fn_type = f64_type.fn_type(&[f64_type.into()], false);
+                Ok(self.module.add_function(name, fn_type, None))
+            }
+            "llvm.vector.reduce.add.v4i32" => {
+                let v4i32_type = i32_type.vec_type(4);
+                let fn_type = i32_type.fn_type(&[v4i32_type.into()], false);
                 Ok(self.module.add_function(name, fn_type, None))
             }
             _ => Err(anyhow!("Unsupported LLVM intrinsic: {}", name)),
@@ -737,6 +763,67 @@ mod tests {
         codegen.gen_item(&item3, &mir_bodies)?;
         let ir3 = codegen.emit_llvm_ir();
         assert!(ir3.contains("call double @llvm.sqrt.f64(double %0)"));
+
+        // Test simd_i32x4_sum
+        let simd_sum_forge = HirForge {
+            name: "simd_sum".to_string(),
+            name_span: Span::dummy(),
+            def_id: DefId(8),
+            params: vec![
+                HirParam {
+                    name: "a".to_string(),
+                    def_id: DefId(9),
+                    ty: Type::Prim(PrimType::I32),
+                    default_value: None,
+                    is_variadic: false,
+                    span: Span::dummy(),
+                },
+                HirParam {
+                    name: "b".to_string(),
+                    def_id: DefId(10),
+                    ty: Type::Prim(PrimType::I32),
+                    default_value: None,
+                    is_variadic: false,
+                    span: Span::dummy(),
+                },
+                HirParam {
+                    name: "c".to_string(),
+                    def_id: DefId(11),
+                    ty: Type::Prim(PrimType::I32),
+                    default_value: None,
+                    is_variadic: false,
+                    span: Span::dummy(),
+                },
+                HirParam {
+                    name: "d".to_string(),
+                    def_id: DefId(12),
+                    ty: Type::Prim(PrimType::I32),
+                    default_value: None,
+                    is_variadic: false,
+                    span: Span::dummy(),
+                },
+            ],
+            ret_type: Type::Prim(PrimType::I32),
+            attributes: vec![ast::Attribute {
+                name: "intrinsic".to_string(),
+                args: vec![ast::Expr::Literal(ast::Literal::Str(
+                    "simd_i32x4_sum".to_string(),
+                ))],
+                span: Span::dummy(),
+            }],
+            requires: vec![],
+            ensures: vec![],
+            body: None,
+            span: Span::dummy(),
+        };
+
+        let item4 = HirItem::Forge(Box::new(simd_sum_forge));
+        codegen.declare_item(&item4)?;
+        codegen.gen_item(&item4, &mir_bodies)?;
+        let ir4 = codegen.emit_llvm_ir();
+        assert!(ir4.contains("declare i32 @llvm.vector.reduce.add.v4i32(<4 x i32>)"));
+        assert!(ir4.contains("define i32 @_iz_simd_sum(i32 %0, i32 %1, i32 %2, i32 %3)"));
+        assert!(ir4.contains("call i32 @llvm.vector.reduce.add.v4i32(<4 x i32>"));
 
         Ok(())
     }

@@ -2168,7 +2168,7 @@ izel/
 ### Phase 6 — Optimization & Hardening (Months 19–22)
 
 - [x] Full MIR optimizer (all passes)
-- [ ] SIMD intrinsics
+- [x] SIMD intrinsics
 - [ ] Full `comptime` evaluation
 - [ ] Comprehensive snapshot + integration test suite
 - [ ] CI/CD with coverage + nightly fuzz runs
