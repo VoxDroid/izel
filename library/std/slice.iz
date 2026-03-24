@@ -1,0 +1,12 @@
+// library/std/slice.iz
+
+shape Slice<T> {
+    data: *T,
+    len: usize,
+}
+
+impl<T> Slice<T> {
+    forge len(&self) -> usize
+    forge is_empty(&self) -> bool
+    forge get(&self, idx: usize) -> ?T
+}

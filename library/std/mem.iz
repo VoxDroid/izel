@@ -1,0 +1,6 @@
+// library/std/mem.iz
+
+forge size_of<T>() -> usize
+forge align_of<T>() -> usize
+forge transmute<T, U>(value: T) -> U
+forge drop<T>(value: T)

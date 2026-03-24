@@ -159,7 +159,7 @@
 - [x] 30.5 Memory Regions Summary
 
 ## 31. Standard Library
-- [ ] Core (no `!alloc` needed)
+- [x] Core (no `!alloc` needed)
 - [x] Allocation & Collections
 - [ ] I/O & OS
 - [ ] Concurrency

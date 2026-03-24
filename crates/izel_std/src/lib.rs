@@ -155,4 +155,88 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn std_core_exposes_no_alloc_surface() {
+        let checks: [(&str, &[&str]); 12] = [
+            ("prim.iz", &["impl i32", "impl f64", "impl bool"]),
+            (
+                "ops.iz",
+                &["weave Add", "weave Sub", "weave Mul", "weave Pipe"],
+            ),
+            ("cmp.iz", &["scroll Ordering", "weave Eq", "weave Ord"]),
+            (
+                "option.iz",
+                &["scroll Option<", "forge is_some", "forge map<"],
+            ),
+            (
+                "result.iz",
+                &["scroll Result<", "shape Cascade<", "forge is_ok"],
+            ),
+            (
+                "convert.iz",
+                &[
+                    "weave From<",
+                    "weave Into<",
+                    "weave TryFrom<",
+                    "weave TryInto<",
+                ],
+            ),
+            (
+                "fmt.iz",
+                &[
+                    "shape Formatter",
+                    "weave Display",
+                    "weave Debug",
+                    "macro format!",
+                ],
+            ),
+            (
+                "mem.iz",
+                &[
+                    "forge size_of<",
+                    "forge align_of<",
+                    "forge transmute<",
+                    "forge drop<",
+                ],
+            ),
+            (
+                "ptr.iz",
+                &[
+                    "forge null<",
+                    "forge null_mut<",
+                    "forge write<",
+                    "forge read<",
+                ],
+            ),
+            ("slice.iz", &["shape Slice<", "forge len", "forge get"]),
+            ("str.iz", &["impl str", "forge len", "forge starts_with"]),
+            (
+                "marker.iz",
+                &[
+                    "weave Copy",
+                    "weave Send",
+                    "weave Sync",
+                    "weave Sized",
+                    "weave Unpin",
+                ],
+            ),
+        ];
+
+        for (file_name, required) in checks {
+            let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join(format!("../../library/std/{}", file_name));
+            let src = fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+
+            for symbol in required {
+                assert!(
+                    src.contains(symbol),
+                    "missing std::{} declaration: {}",
+                    file_name,
+                    symbol
+                );
+            }
+        }
+    }
 }

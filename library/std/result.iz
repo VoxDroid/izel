@@ -1,0 +1,17 @@
+// library/std/result.iz
+
+scroll Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+
+shape Cascade<E> {
+    error: E,
+}
+
+impl<T, E> Result<T, E> {
+    forge is_ok(&self) -> bool
+    forge is_err(&self) -> bool
+    forge unwrap(self) -> T
+    forge map<U>(self, f: bind(T) -> U) -> Result<U, E>
+}

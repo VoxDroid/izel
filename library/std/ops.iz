@@ -1,0 +1,31 @@
+// library/std/ops.iz
+
+weave Add {
+    type Output
+    forge add(self, rhs: Self) -> Self::Output
+}
+
+weave Sub {
+    type Output
+    forge sub(self, rhs: Self) -> Self::Output
+}
+
+weave Mul {
+    type Output
+    forge mul(self, rhs: Self) -> Self::Output
+}
+
+weave Div {
+    type Output
+    forge div(self, rhs: Self) -> Self::Output
+}
+
+weave Rem {
+    type Output
+    forge rem(self, rhs: Self) -> Self::Output
+}
+
+weave Pipe {
+    type Output
+    forge pipe(self, rhs: Self) -> Self::Output
+}

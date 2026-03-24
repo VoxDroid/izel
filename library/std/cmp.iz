@@ -1,0 +1,15 @@
+// library/std/cmp.iz
+
+scroll Ordering {
+    Less,
+    Equal,
+    Greater,
+}
+
+weave Eq {
+    forge eq(&self, other: &Self) -> bool
+}
+
+weave Ord {
+    forge cmp(&self, other: &Self) -> Ordering
+}

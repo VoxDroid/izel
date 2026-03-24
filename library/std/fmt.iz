@@ -1,0 +1,15 @@
+// library/std/fmt.iz
+
+shape Formatter {
+}
+
+weave Display {
+    forge fmt(&self, f: &~Formatter) -> Result<void, ()>
+}
+
+weave Debug {
+    forge fmt(&self, f: &~Formatter) -> Result<void, ()>
+}
+
+macro format!(args...) {
+}

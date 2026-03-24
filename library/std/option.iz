@@ -1,0 +1,13 @@
+// library/std/option.iz
+
+scroll Option<T> {
+    Some(T),
+    None,
+}
+
+impl<T> Option<T> {
+    forge is_some(&self) -> bool
+    forge is_none(&self) -> bool
+    forge unwrap(self) -> T
+    forge map<U>(self, f: bind(T) -> U) -> Option<U>
+}

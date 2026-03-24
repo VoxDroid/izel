@@ -1,0 +1,16 @@
+// library/std/marker.iz
+
+weave Copy {
+}
+
+weave Send {
+}
+
+weave Sync {
+}
+
+weave Sized {
+}
+
+weave Unpin {
+}

@@ -1,0 +1,7 @@
+// library/std/ptr.iz
+
+forge null<T>() -> *T
+forge null_mut<T>() -> *~T
+forge is_null<T>(ptr: *T) -> bool
+forge write<T>(ptr: *~T, value: T)
+forge read<T>(ptr: *T) -> T

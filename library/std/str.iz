@@ -1,0 +1,8 @@
+// library/std/str.iz
+
+impl str {
+    forge len(&self) -> usize
+    forge is_empty(&self) -> bool
+    forge starts_with(&self, prefix: str) -> bool
+    forge ends_with(&self, suffix: str) -> bool
+}

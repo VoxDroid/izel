@@ -1,0 +1,11 @@
+// library/std/range.iz
+
+shape Range<T> {
+    start: T,
+    end: T,
+}
+
+shape RangeInclusive<T> {
+    start: T,
+    end: T,
+}

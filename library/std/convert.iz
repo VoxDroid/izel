@@ -1,0 +1,19 @@
+// library/std/convert.iz
+
+weave From<T> {
+    forge from(value: T) -> Self
+}
+
+weave Into<T> {
+    forge into(self) -> T
+}
+
+weave TryFrom<T> {
+    type Error
+    forge try_from(value: T) -> Result<Self, Self::Error>
+}
+
+weave TryInto<T> {
+    type Error
+    forge try_into(self) -> Result<T, Self::Error>
+}
