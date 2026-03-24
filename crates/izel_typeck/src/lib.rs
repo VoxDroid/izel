@@ -415,18 +415,37 @@ impl TypeChecker {
     fn check_impl(&mut self, i: &ast::Impl) {
         let _target = self.lower_ast_type(&i.target);
         if let Some(weave_ty) = &i.weave {
-            if let ast::Type::Prim(weave_name) = weave_ty {
-                if let Some(w) = self.weaves.get(weave_name).cloned() {
-                    for expected_method in &w.methods {
-                        let found = i.items.iter().find(|item| {
-                            if let ast::Item::Forge(f) = item {
-                                f.name == expected_method.name
-                            } else {
-                                false
-                            }
-                        });
+            let weave_name = self.type_to_string(weave_ty);
+            if let Some(w) = self.weaves.get(&weave_name).cloned() {
+                for expected_method in &w.methods {
+                    let found = i.items.iter().find(|item| {
+                        if let ast::Item::Forge(f) = item {
+                            f.name == expected_method.name
+                        } else {
+                            false
+                        }
+                    });
 
-                        if found.is_none() {}
+                    if let Some(ast::Item::Forge(impl_method)) = found {
+                        let expected_effects = self.effect_set_from_names(&expected_method.effects);
+                        let actual_effects = self.effect_set_from_names(&impl_method.effects);
+
+                        if !self.unify_effects(&actual_effects, &expected_effects) {
+                            self.diagnostics.push(
+                                izel_diagnostics::Diagnostic::error().with_message(format!(
+                                    "impl method '{}::{}' introduces effects not declared by weave '{}'",
+                                    self.type_to_string(&i.target),
+                                    impl_method.name,
+                                    weave_name,
+                                )),
+                            );
+                        }
+                    } else {
+                        self.diagnostics
+                            .push(izel_diagnostics::Diagnostic::error().with_message(format!(
+                                "impl for '{}' is missing required weave method '{}'",
+                                weave_name, expected_method.name,
+                            )));
                     }
                 }
             }
@@ -949,30 +968,7 @@ impl TypeChecker {
 
         self.apply_lifetime_elision(&mut params, &mut ret);
 
-        let mut effects = Vec::new();
-        for e in &f.effects {
-            effects.push(match e.as_str() {
-                "io" => Effect::IO,
-                "net" => Effect::Net,
-                "alloc" => Effect::Alloc,
-                "panic" => Effect::Panic,
-                "unsafe" => Effect::Unsafe,
-                "time" => Effect::Time,
-                "rand" => Effect::Rand,
-                "env" => Effect::Env,
-                "ffi" => Effect::Ffi,
-                "thread" => Effect::Thread,
-                "mut" => Effect::Mut,
-                "pure" => Effect::Pure,
-                _ => Effect::User(e.clone()),
-            });
-        }
-
-        let effect_set = if f.effects.contains(&"pure".to_string()) || f.effects.is_empty() {
-            EffectSet::Concrete(vec![Effect::Pure])
-        } else {
-            EffectSet::Concrete(effects)
-        };
+        let effect_set = self.effect_set_from_names(&f.effects);
 
         let ty = Type::Function {
             params,
@@ -999,6 +995,33 @@ impl TypeChecker {
         scheme.visibility = f.visibility.clone();
 
         scheme
+    }
+
+    fn effect_set_from_names(&self, names: &[String]) -> EffectSet {
+        if names.is_empty() || names.iter().any(|e| e == "pure") {
+            return EffectSet::Concrete(vec![Effect::Pure]);
+        }
+
+        let effects = names
+            .iter()
+            .map(|e| match e.as_str() {
+                "io" => Effect::IO,
+                "net" => Effect::Net,
+                "alloc" => Effect::Alloc,
+                "panic" => Effect::Panic,
+                "unsafe" => Effect::Unsafe,
+                "time" => Effect::Time,
+                "rand" => Effect::Rand,
+                "env" => Effect::Env,
+                "ffi" => Effect::Ffi,
+                "thread" => Effect::Thread,
+                "mut" => Effect::Mut,
+                "pure" => Effect::Pure,
+                _ => Effect::User(e.clone()),
+            })
+            .collect();
+
+        EffectSet::Concrete(effects)
     }
 
     fn check_block(&mut self, block: &ast::Block) {
@@ -3469,6 +3492,51 @@ mod tests {
                 .iter()
                 .any(|d| d.message.contains("expected at least one effect name")),
             "missing effect_boundary arguments must produce diagnostic"
+        );
+    }
+
+    #[test]
+    fn test_effect_based_testing_allows_pure_test_double_impl() {
+        let source = r#"
+            weave Logger {
+                forge log(self, msg: str) !io
+            }
+
+            shape NoOpLogger {}
+
+            impl Logger for NoOpLogger {
+                forge log(self, msg: str) {
+                    give
+                }
+            }
+        "#;
+
+        let tokens = tokenize(source);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
+        parser.source = source.to_string();
+        let cst = parser.parse_source_file();
+        let lowerer = izel_ast_lower::Lowerer::new(source);
+        let ast = lowerer.lower_module(&cst);
+
+        let mut tc = TypeChecker::new();
+        tc.check_ast(&ast);
+
+        assert!(
+            tc.diagnostics.is_empty(),
+            "pure test double impl should satisfy !io weave contract, diagnostics: {:?}",
+            tc.diagnostics
+        );
+    }
+
+    #[test]
+    fn test_effect_based_testing_rejects_impl_with_extra_effects() {
+        let mut tc = TypeChecker::new();
+        let weave_contract = tc.effect_set_from_names(&["pure".to_string()]);
+        let impl_effects = tc.effect_set_from_names(&["io".to_string()]);
+
+        assert!(
+            !tc.unify_effects(&impl_effects, &weave_contract),
+            "effectful implementations must not satisfy a pure weave contract"
         );
     }
 

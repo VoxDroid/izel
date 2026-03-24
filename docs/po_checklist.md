@@ -91,7 +91,7 @@
 - [x] 17.2 Declaring Effects
 - [x] 17.3 Effect Propagation
 - [x] 17.4 Effect Boundaries
-- [ ] 17.5 Effect-Based Testing
+- [x] 17.5 Effect-Based Testing
 
 ## 18. Witness Types
 - [ ] 18.1 Built-in Witnesses
