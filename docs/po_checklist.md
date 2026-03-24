@@ -126,7 +126,7 @@
 - [x] 25.3 Atomic Types
 
 ## 26. Raw Blocks & FFI — `raw` / `bridge`
-- [ ] 26.1 `raw` Blocks
+- [x] 26.1 `raw` Blocks
 - [ ] 26.2 `bridge` — C/C++ FFI
 - [ ] 26.3 Inline Assembly
 

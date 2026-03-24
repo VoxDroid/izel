@@ -2172,10 +2172,17 @@ impl TypeChecker {
                 Type::Prim(PrimType::Void)
             }
             ast::Expr::Raw(inner) => {
+                let old_raw = self.in_raw_block;
+                self.in_raw_block = true;
                 let ty = self.infer_expr(inner);
-                // raw x always produces a Witness<T> in proof context
-                // even in non-proof functions, 'raw' is the explicit bypass.
-                Type::Witness(Box::new(ty))
+                self.in_raw_block = old_raw;
+
+                match inner.as_ref() {
+                    // `raw { ... }` models an explicit unsafe scope and preserves inner type.
+                    ast::Expr::Block(_) => ty,
+                    // Legacy `raw expr` remains an explicit witness bypass constructor.
+                    _ => Type::Witness(Box::new(ty)),
+                }
             }
             ast::Expr::Each { var, iter, body } => {
                 let _it = self.infer_expr(iter);
@@ -3083,6 +3090,69 @@ mod tests {
         } else {
             panic!("Expected Forge item");
         }
+    }
+
+    #[test]
+    fn test_raw_block_preserves_inner_type() {
+        let source = "forge raw_i32() -> i32 { raw { 7 } }";
+        let tokens = tokenize(source);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
+        parser.source = source.to_string();
+        let cst = parser.parse_decl();
+        let lowerer = izel_ast_lower::Lowerer::new(source);
+        let items = lowerer.lower_item(&cst);
+        let module = ast::Module { items };
+
+        let mut tc = TypeChecker::new();
+        tc.check_ast(&module);
+
+        assert!(
+            tc.diagnostics.is_empty(),
+            "raw block should preserve inner type, diagnostics: {:?}",
+            tc.diagnostics
+        );
+    }
+
+    #[test]
+    fn test_raw_block_allows_witness_new_outside_proof() {
+        let source = "forge mk() -> Witness<i32> { raw { Witness::<i32>::new() } }";
+        let tokens = tokenize(source);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
+        parser.source = source.to_string();
+        let cst = parser.parse_decl();
+        let lowerer = izel_ast_lower::Lowerer::new(source);
+        let items = lowerer.lower_item(&cst);
+        let module = ast::Module { items };
+
+        let mut tc = TypeChecker::new();
+        tc.check_ast(&module);
+
+        assert!(
+            tc.diagnostics.is_empty(),
+            "witness construction should be permitted inside raw block, diagnostics: {:?}",
+            tc.diagnostics
+        );
+    }
+
+    #[test]
+    fn test_raw_expr_still_constructs_witness() {
+        let source = "forge mk() -> Witness<i32> { raw 1 }";
+        let tokens = tokenize(source);
+        let mut parser = izel_parser::Parser::new(tokens, source.to_string());
+        parser.source = source.to_string();
+        let cst = parser.parse_decl();
+        let lowerer = izel_ast_lower::Lowerer::new(source);
+        let items = lowerer.lower_item(&cst);
+        let module = ast::Module { items };
+
+        let mut tc = TypeChecker::new();
+        tc.check_ast(&module);
+
+        assert!(
+            tc.diagnostics.is_empty(),
+            "legacy raw expr witness bypass should remain valid, diagnostics: {:?}",
+            tc.diagnostics
+        );
     }
 
     #[test]
