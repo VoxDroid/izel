@@ -178,10 +178,10 @@
 - [x] Scaffolding Complete
 
 ## 34. Milestones & Roadmap
-- [ ] Phase 0 — Bootstrap (Months 1–2)
-- [ ] Phase 1 — Core Language (Months 3–5)
-- [ ] Phase 2 — Type System & Safety (Months 6–8)
-- [ ] Phase 3 — Unique Features (Months 9–12)
+- [x] Phase 0 — Bootstrap (Months 1–2)
+- [x] Phase 1 — Core Language (Months 3–5)
+- [x] Phase 2 — Type System & Safety (Months 6–8)
+- [x] Phase 3 — Unique Features (Months 9–12)
 - [x] Phase 4 — Standard Library v0.1 (Months 13–15)
 - [x] Phase 5 — Toolchain (Months 16–18)
 - [ ] Phase 6 — Optimization & Hardening (Months 19–22)

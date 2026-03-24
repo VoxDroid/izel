@@ -1,51 +1,26 @@
-/// A transformation pass on the intermediate representation.
-pub trait Pass<IR> {
-    fn name(&self) -> &str;
-    fn run(&self, ir: &mut IR) -> bool; // returns true if any changes were made
-}
+pub mod pass;
+pub mod passes;
 
-/// Manages the execution of multiple optimization passes.
-pub struct PassManager<IR> {
-    pub passes: Vec<Box<dyn Pass<IR>>>,
-}
+pub use pass::{IdentityPass, Pass, PassManager};
 
-impl<IR> Default for PassManager<IR> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+use passes::{
+    ConstFoldPass, DcePass, EscapePass, GvnPass, InlinePass, IterFusePass, LicmPass, SroaPass,
+    TcoPass,
+};
 
-impl<IR> PassManager<IR> {
-    pub fn new() -> Self {
-        Self { passes: Vec::new() }
-    }
-
-    pub fn add<P: 'static + Pass<IR>>(&mut self, pass: P) {
-        self.passes.push(Box::new(pass));
-    }
-
-    pub fn run(&self, ir: &mut IR) {
-        let mut changed = true;
-        while changed {
-            changed = false;
-            for pass in &self.passes {
-                if pass.run(ir) {
-                    changed = true;
-                }
-            }
-        }
-    }
-}
-
-/// A simple identity pass that does nothing.
-pub struct IdentityPass;
-
-impl<IR> Pass<IR> for IdentityPass {
-    fn name(&self) -> &str {
-        "identity"
-    }
-
-    fn run(&self, _ir: &mut IR) -> bool {
-        false
-    }
+/// Build the default MIR optimizer pipeline.
+///
+/// The pass list mirrors the roadmap/checklist target for the Phase 6 optimizer.
+pub fn default_mir_pass_manager<IR>() -> PassManager<IR> {
+    let mut pm = PassManager::new();
+    pm.add(ConstFoldPass);
+    pm.add(DcePass);
+    pm.add(InlinePass);
+    pm.add(LicmPass);
+    pm.add(TcoPass);
+    pm.add(IterFusePass);
+    pm.add(EscapePass);
+    pm.add(SroaPass);
+    pm.add(GvnPass);
+    pm
 }
