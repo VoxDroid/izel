@@ -1,0 +1,9 @@
+{
+  "name": "izel-playground",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "serve": "python3 -m http.server 4173",
+    "build:wasm": "cd wasm && cargo build --target wasm32-unknown-unknown"
+  }
+}

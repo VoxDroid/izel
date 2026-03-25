@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Izel Playground</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <h1>Izel Playground</h1>
+    <p class="subtitle">WASM-compiled browser REPL scaffold</p>
+    <textarea id="source" spellcheck="false">draw std::io
+
+forge main() !io {
+    std::io::println("Hello, Izel Playground")
+}</textarea>
+    <div class="actions">
+      <button id="run">Run</button>
+    </div>
+    <pre id="output">Ready.</pre>
+  </main>
+  <script type="module" src="main.js"></script>
+</body>
+</html>

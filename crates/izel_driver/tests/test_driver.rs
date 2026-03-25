@@ -212,3 +212,51 @@ fn test_phase7_tree_sitter_grammar_contains_core_rules() {
         );
     }
 }
+
+#[test]
+fn test_phase7_playground_assets_present() {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let html = repo_root.join("tools/playground/index.html");
+    let js = repo_root.join("tools/playground/main.js");
+    let css = repo_root.join("tools/playground/styles.css");
+    let wasm_toml = repo_root.join("tools/playground/wasm/Cargo.toml");
+    let wasm_lib = repo_root.join("tools/playground/wasm/src/lib.rs");
+
+    for path in [&html, &js, &css, &wasm_toml, &wasm_lib] {
+        assert!(path.exists(), "expected playground asset at {:?}", path);
+    }
+}
+
+#[test]
+fn test_phase7_playground_contains_wasm_repl_wiring() {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let js_path = repo_root.join("tools/playground/main.js");
+    let wasm_lib = repo_root.join("tools/playground/wasm/src/lib.rs");
+
+    let js = fs::read_to_string(&js_path)
+        .unwrap_or_else(|e| panic!("failed to read {:?}: {}", js_path, e));
+    let lib = fs::read_to_string(&wasm_lib)
+        .unwrap_or_else(|e| panic!("failed to read {:?}: {}", wasm_lib, e));
+
+    let required_js = [
+        "./pkg/izel_playground.js",
+        "repl_eval",
+        "WASM playground loaded",
+    ];
+    let required_lib = ["wasm_bindgen", "pub fn repl_eval("];
+
+    for symbol in required_js {
+        assert!(
+            js.contains(symbol),
+            "missing playground JS symbol: {}",
+            symbol
+        );
+    }
+    for symbol in required_lib {
+        assert!(
+            lib.contains(symbol),
+            "missing playground wasm bridge symbol: {}",
+            symbol
+        );
+    }
+}

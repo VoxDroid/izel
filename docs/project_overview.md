@@ -2180,7 +2180,7 @@ izel/
 - [x] Bootstrap: Rust-compiled Izel compiles Izel-written `izelc`
 - [x] Public Izel package registry
 - [x] `tree-sitter-izel` grammar for broad editor support
-- [ ] Izel Playground (WASM-compiled browser REPL)
+- [x] Izel Playground (WASM-compiled browser REPL)
 
 ---
 
