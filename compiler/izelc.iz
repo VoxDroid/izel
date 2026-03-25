@@ -1,0 +1,153 @@
+// Izel compiler driver written in Izel
+// Phase 7 milestone: Rewrite izelc in Izel
+
+shape CompileConfig {
+    input_path: Str
+    run_after_codegen: Bool
+    check_contracts: Bool
+}
+
+shape CompileReport {
+    token_count: Int
+    diagnostics_count: Int
+    llvm_ir: Str
+}
+
+forge main {
+    params: [args: List[Str]]
+    ret: Int
+    body: {
+        ~ config = parse_cli(args)
+        ~ report = compile_file(config)
+
+        given report.diagnostics_count > 0 {
+            return 1
+        }
+
+        return 0
+    }
+}
+
+forge compile_file {
+    params: [config: CompileConfig]
+    ret: CompileReport
+    body: {
+        ~ source = fs_read_to_string(config.input_path)
+
+        // Stage 1: lexing
+        ~ tokens = tokenize(source)
+
+        // Stage 2: parsing
+        ~ ast = parse_module(tokens)
+
+        // Stage 3: name resolution
+        ~ resolved = resolve_module(ast)
+
+        // Stage 4: type checking
+        ~ checked = typecheck_module(resolved)
+
+        // Stage 5: lowering
+        ~ hir = lower_to_hir(checked)
+        ~ mir = lower_to_mir(hir, config.check_contracts)
+
+        // Stage 6: optimization + codegen
+        ~ optimized = run_mir_passes(mir)
+        ~ llvm_ir = codegen_llvm(optimized)
+
+        given config.run_after_codegen {
+            run_jit(llvm_ir)
+        }
+
+        return CompileReport {
+            token_count: tokens.len(),
+            diagnostics_count: checked.diagnostics.len(),
+            llvm_ir: llvm_ir,
+        }
+    }
+}
+
+forge parse_cli {
+    params: [args: List[Str]]
+    ret: CompileConfig
+    body: {
+        // Placeholder CLI logic for bootstrap milestone.
+        return CompileConfig {
+            input_path: args.get_or(1, "main.iz"),
+            run_after_codegen: args.contains("--run"),
+            check_contracts: args.contains("--check-contracts"),
+        }
+    }
+}
+
+forge fs_read_to_string {
+    params: [path: Str]
+    ret: Str
+    body: {
+        // Bootstrap shim until std::fs is fully wired in self-hosted mode.
+        return bridge_fs_read_to_string(path)
+    }
+}
+
+forge parse_module {
+    params: [tokens: List[Token]]
+    ret: AstNode
+    body: {
+        return parser_parse_module(tokens)
+    }
+}
+
+forge resolve_module {
+    params: [ast: AstNode]
+    ret: ResolvedModule
+    body: {
+        return resolver_resolve_module(ast)
+    }
+}
+
+forge typecheck_module {
+    params: [resolved: ResolvedModule]
+    ret: TypedModule
+    body: {
+        return typeck_check_module(resolved)
+    }
+}
+
+forge lower_to_hir {
+    params: [typed: TypedModule]
+    ret: HirModule
+    body: {
+        return hir_lower_module(typed)
+    }
+}
+
+forge lower_to_mir {
+    params: [hir: HirModule, check_contracts: Bool]
+    ret: MirModule
+    body: {
+        return mir_lower_module(hir, check_contracts)
+    }
+}
+
+forge run_mir_passes {
+    params: [mir: MirModule]
+    ret: MirModule
+    body: {
+        return optimize_mir(mir)
+    }
+}
+
+forge codegen_llvm {
+    params: [mir: MirModule]
+    ret: Str
+    body: {
+        return llvm_codegen_module(mir)
+    }
+}
+
+forge run_jit {
+    params: [llvm_ir: Str]
+    ret: Unit
+    body: {
+        llvm_jit_execute(llvm_ir)
+    }
+}

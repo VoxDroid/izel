@@ -2172,11 +2172,11 @@ izel/
 - [x] Full `comptime` evaluation
 - [x] Comprehensive snapshot + integration test suite
 - [x] CI/CD with coverage + nightly fuzz runs
-- [ ] Language specification v1.0 (normative)
+- [x] Language specification v1.0 (normative)
 
 ### Phase 7 — Self-Hosting (Months 23+)
 
-- [ ] Rewrite `izelc` in Izel
+- [x] Rewrite `izelc` in Izel
 - [ ] Bootstrap: Rust-compiled Izel compiles Izel-written `izelc`
 - [ ] Public Izel package registry
 - [ ] `tree-sitter-izel` grammar for broad editor support
@@ -2297,18 +2297,18 @@ The normative Izel language specification lives in `docs/spec/`:
 
 | Chapter | File | Status |
 |---------|------|--------|
-| 1. Lexical Structure | `01-lexical.md` | Draft |
-| 2. Syntax & Grammar | `02-syntax.md` | Draft |
-| 3. Types & Kinds | `03-types.md` | Planned |
-| 4. The Effect System | `04-effects.md` | Planned |
-| 5. Memory & Ownership | `05-memory.md` | Planned |
-| 6. Witness Types | `06-witnesses.md` | Planned |
-| 7. Temporal Contracts | `07-contracts.md` | Planned |
-| 8. Memory Zones | `08-zones.md` | Planned |
-| 9. Duality Types | `09-duality.md` | Planned |
-| A. Grammar Reference | `appendix-a-grammar.md` | Planned |
-| B. Keyword Reference | `appendix-b-keywords.md` | Draft |
-| C. Standard Library API | `appendix-c-stdlib.md` | Planned |
+| 1. Lexical Structure | `01-lexical.md` | Normative v1.0 |
+| 2. Syntax & Grammar | `02-syntax.md` | Normative v1.0 |
+| 3. Types & Kinds | `03-types.md` | Normative v1.0 |
+| 4. The Effect System | `04-effects.md` | Normative v1.0 |
+| 5. Memory & Ownership | `05-memory.md` | Normative v1.0 |
+| 6. Witness Types | `06-witnesses.md` | Normative v1.0 |
+| 7. Temporal Contracts | `07-contracts.md` | Normative v1.0 |
+| 8. Memory Zones | `08-zones.md` | Normative v1.0 |
+| 9. Duality Types | `09-duality.md` | Normative v1.0 |
+| A. Grammar Reference | `appendix-a-grammar.md` | Normative v1.0 |
+| B. Keyword Reference | `appendix-b-keywords.md` | Normative v1.0 |
+| C. Standard Library API | `appendix-c-stdlib.md` | Normative v1.0 |
 
 ---
 

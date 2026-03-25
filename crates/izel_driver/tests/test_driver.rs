@@ -60,3 +60,43 @@ fn test_custom_iterator_typechecks() {
 fn test_custom_witness_typechecks() {
     assert_fixture_typechecks("tests/fixtures/custom_witness.iz");
 }
+
+#[test]
+fn test_phase7_self_hosting_sources_exist() {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let lexer = repo_root.join("compiler/lexer.iz");
+    let parser = repo_root.join("compiler/parser.iz");
+    let driver = repo_root.join("compiler/izelc.iz");
+
+    for path in [&lexer, &parser, &driver] {
+        assert!(path.exists(), "expected self-hosting source at {:?}", path);
+    }
+}
+
+#[test]
+fn test_phase7_izelc_pipeline_surface_present() {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../compiler/izelc.iz");
+    let src =
+        fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+
+    let required = [
+        "forge main",
+        "forge compile_file",
+        "~ tokens = tokenize(source)",
+        "~ ast = parse_module(tokens)",
+        "~ resolved = resolve_module(ast)",
+        "~ checked = typecheck_module(resolved)",
+        "~ hir = lower_to_hir(checked)",
+        "~ mir = lower_to_mir(hir, config.check_contracts)",
+        "~ optimized = run_mir_passes(mir)",
+        "~ llvm_ir = codegen_llvm(optimized)",
+    ];
+
+    for symbol in required {
+        assert!(
+            src.contains(symbol),
+            "missing self-hosted izelc pipeline symbol: {}",
+            symbol
+        );
+    }
+}
