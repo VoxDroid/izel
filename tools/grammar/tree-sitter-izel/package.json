@@ -1,0 +1,15 @@
+{
+  "name": "tree-sitter-izel",
+  "version": "0.1.0",
+  "description": "Tree-sitter grammar for the Izel language",
+  "main": "grammar.js",
+  "license": "MIT",
+  "keywords": ["tree-sitter", "grammar", "izel"],
+  "devDependencies": {
+    "tree-sitter-cli": "^0.22.6"
+  },
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test"
+  }
+}

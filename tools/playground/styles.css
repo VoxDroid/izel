@@ -1,0 +1,66 @@
+:root {
+  --bg: #f3efe6;
+  --panel: #fffaf1;
+  --ink: #211f1b;
+  --accent: #b65a2a;
+  --muted: #6f665b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", "Fira Sans", sans-serif;
+  background: radial-gradient(circle at top left, #ffefe0, var(--bg) 55%);
+  color: var(--ink);
+}
+
+.shell {
+  max-width: 900px;
+  margin: 2rem auto;
+  padding: 1.25rem;
+  background: var(--panel);
+  border: 1px solid #e6d8c7;
+  border-radius: 14px;
+}
+
+.subtitle {
+  color: var(--muted);
+}
+
+textarea {
+  width: 100%;
+  min-height: 260px;
+  margin-top: 1rem;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 0.95rem;
+  padding: 0.85rem;
+  border: 1px solid #d8c8b4;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.actions {
+  margin: 0.75rem 0;
+}
+
+button {
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+pre {
+  margin: 0;
+  padding: 0.85rem;
+  border-radius: 10px;
+  background: #1d1a16;
+  color: #f8eee1;
+  min-height: 88px;
+  overflow: auto;
+}

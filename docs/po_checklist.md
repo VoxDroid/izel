@@ -184,16 +184,16 @@
 - [x] Phase 3 — Unique Features (Months 9–12)
 - [x] Phase 4 — Standard Library v0.1 (Months 13–15)
 - [x] Phase 5 — Toolchain (Months 16–18)
-- [ ] Phase 6 — Optimization & Hardening (Months 19–22)
-- [ ] Phase 7 — Self-Hosting (Months 23+)
+- [x] Phase 6 — Optimization & Hardening (Months 19–22)
+- [x] Phase 7 — Self-Hosting (Months 23+)
 
 ## 35. Dependencies
 - [x] Rust Crates
-- [ ] System Dependencies
+- [x] System Dependencies
 
 ## 36. Contributing Guidelines
 - [x] Getting Started
-- [ ] Commit Convention (Conventional Commits)
+- [x] Commit Convention (Conventional Commits)
 - [x] Pull Request Requirements
 - [x] Testing Philosophy
 

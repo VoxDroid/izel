@@ -593,6 +593,12 @@ name = "izel_integration_tests"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "izel_ast_lower",
+ "izel_lexer",
+ "izel_parser",
+ "izel_resolve",
+ "izel_span",
+ "izel_typeck",
 ]
 
 [[package]]

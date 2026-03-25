@@ -1,0 +1,11 @@
+{
+  "registry": "izel-public",
+  "version": 1,
+  "packages": [
+    {
+      "name": "std",
+      "latest": "1.0.0",
+      "versions": ["1.0.0"]
+    }
+  ]
+}

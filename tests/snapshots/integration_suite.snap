@@ -1,0 +1,4 @@
+# Integration Snapshot
+PASS driver_custom_iterator tokens=200 diagnostics=0 status=ok
+PASS driver_custom_witness tokens=109 diagnostics=0 status=ok
+FAIL effects_violation tokens=28 diagnostics=1 status=diag first_diag=Function has effects Row([IO], Var(2)) but only declared Concrete([Pure])

@@ -30,8 +30,11 @@ fn main() -> Result<()> {
                     "Loaded manifest for package: {} v{}",
                     manifest.package.name, manifest.package.version
                 );
-                izel_pm::resolve_dependencies(&manifest.dependencies)
-                    .map_err(|e| anyhow::anyhow!(e))?;
+                izel_pm::resolve_dependencies_with_registry(
+                    &manifest.dependencies,
+                    &manifest.registry,
+                )
+                .map_err(|e| anyhow::anyhow!(e))?;
                 return Ok(());
             }
         }

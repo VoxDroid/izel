@@ -1,0 +1,38 @@
+name: nightly
+
+on:
+	schedule:
+		- cron: "0 2 * * *"
+	workflow_dispatch:
+
+env:
+	CARGO_TERM_COLOR: always
+	LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
+
+jobs:
+	nightly-regression-and-fuzz:
+		runs-on: ubuntu-latest
+		steps:
+			- name: Checkout
+				uses: actions/checkout@v4
+
+			- name: Install LLVM 17
+				run: |
+					sudo apt-get update
+					sudo apt-get install -y llvm-17-dev clang-17
+
+			- name: Setup Rust nightly toolchain
+				uses: dtolnay/rust-toolchain@nightly
+
+			- name: Cache cargo artifacts
+				uses: Swatinem/rust-cache@v2
+
+			- name: Workspace tests
+				run: cargo test --workspace
+
+			- name: Install cargo-fuzz
+				run: cargo install cargo-fuzz --locked
+
+			- name: Run lexer fuzz target
+				working-directory: crates/izel_lexer/fuzz
+				run: cargo fuzz run lexer_fuzz -- -max_total_time=120
