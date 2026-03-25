@@ -1,38 +1,38 @@
 name: release
 
 on:
-	push:
-		tags:
-			- "v*"
-	workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
 
 env:
-	CARGO_TERM_COLOR: always
-	LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
+  CARGO_TERM_COLOR: always
+  LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
 
 jobs:
-	build-release-artifacts:
-		runs-on: ubuntu-latest
-		steps:
-			- name: Checkout
-				uses: actions/checkout@v4
+  build-release-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-			- name: Install LLVM 17
-				run: |
-					sudo apt-get update
-					sudo apt-get install -y llvm-17-dev clang-17
+      - name: Install LLVM 17
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-17-dev clang-17
 
-			- name: Setup Rust toolchain
-				uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
-			- name: Cache cargo artifacts
-				uses: Swatinem/rust-cache@v2
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
 
-			- name: Build release binaries
-				run: cargo build --workspace --release
+      - name: Build release binaries
+        run: cargo build --workspace --release
 
-			- name: Upload izelc binary artifact
-				uses: actions/upload-artifact@v4
-				with:
-					name: izelc-linux-x86_64
-					path: target/release/izelc
+      - name: Upload izelc binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: izelc-linux-x86_64
+          path: target/release/izelc
