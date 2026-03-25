@@ -189,7 +189,7 @@
 
 ## 35. Dependencies
 - [x] Rust Crates
-- [ ] System Dependencies
+- [x] System Dependencies
 
 ## 36. Contributing Guidelines
 - [x] Getting Started

@@ -2226,6 +2226,20 @@ izel/
 | CMake | 3.20 | Only if building LLVM from source |
 | `zlib` | 1.2 | Required by LLVM |
 
+### Dependency Verification
+
+Run the dependency checker to validate local setup:
+
+```bash
+bash tools/ci/check_system_deps.sh
+```
+
+For non-blocking diagnostics:
+
+```bash
+bash tools/ci/check_system_deps.sh --report-only
+```
+
 ---
 
 ## 36. Contributing Guidelines

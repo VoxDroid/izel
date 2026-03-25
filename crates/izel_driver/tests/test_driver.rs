@@ -260,3 +260,40 @@ fn test_phase7_playground_contains_wasm_repl_wiring() {
         );
     }
 }
+
+#[test]
+fn test_system_dependency_checker_present() {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let checker = repo_root.join("tools/ci/check_system_deps.sh");
+
+    assert!(
+        checker.exists(),
+        "expected system dependency checker at {:?}",
+        checker
+    );
+}
+
+#[test]
+fn test_system_dependency_checker_covers_required_tools() {
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tools/ci/check_system_deps.sh");
+    let src =
+        fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+
+    let required = [
+        "llvm-config",
+        "ld.lld",
+        "clang",
+        "cmake",
+        "zlib",
+        "--report-only",
+    ];
+
+    for symbol in required {
+        assert!(
+            src.contains(symbol),
+            "missing system dependency check symbol: {}",
+            symbol
+        );
+    }
+}
