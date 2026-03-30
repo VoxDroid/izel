@@ -2,6 +2,17 @@
 
 This document provides a granular, step-by-step roadmap for building the Izel compiler and toolchain. Every action is aligned with the vision of a "unique, only one" systems language.
 
+## Validation Snapshot (2026-03-30)
+
+- [x] `cargo check --workspace --all-targets`
+- [x] `cargo test --workspace`
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+- [x] `bash tools/ci/check_system_deps.sh`
+- [x] `bash tools/ci/check_coverage.sh --report-only` (workspace line coverage: `69.36%`)
+
+Note: this file is a long-range implementation roadmap. For evidence-tracked test completeness and remaining validation gaps, see `docs/tests_checklist.md`.
+
 ---
 
 ## Phase 0: Bootstrap & Infrastructure (Months 1–2)
