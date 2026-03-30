@@ -2203,7 +2203,7 @@ mod tests {
     use super::*;
     use izel_lexer::{Lexer, Token, TokenKind};
     use izel_parser::Parser;
-    use izel_span::SourceId;
+    use izel_span::{BytePos, SourceId, Span};
 
     fn tokenize(source: &str) -> Vec<Token> {
         let mut lexer = Lexer::new(source, izel_span::SourceId(0));
@@ -2217,6 +2217,27 @@ mod tests {
             tokens.push(token);
         }
         tokens
+    }
+
+    fn parse_decl_node(source: &str) -> SyntaxNode {
+        let tokens = tokenize(source);
+        let mut parser = Parser::new(tokens, source.to_string());
+        parser.source = source.to_string();
+        parser.parse_decl()
+    }
+
+    fn parse_type_node(source: &str) -> SyntaxNode {
+        let tokens = tokenize(source);
+        let mut parser = Parser::new(tokens, source.to_string());
+        parser.source = source.to_string();
+        parser.parse_type()
+    }
+
+    fn parse_pattern_node(source: &str) -> SyntaxNode {
+        let tokens = tokenize(source);
+        let mut parser = Parser::new(tokens, source.to_string());
+        parser.source = source.to_string();
+        parser.parse_pattern()
     }
 
     #[test]
@@ -2573,5 +2594,181 @@ mod tests {
                 other
             ),
         }
+    }
+
+    #[test]
+    fn test_lower_visibility_variants_on_forge() {
+        let cases = vec![
+            (
+                "open forge f() {}",
+                ast::Visibility::Open,
+                "open visibility",
+            ),
+            (
+                "hidden forge f() {}",
+                ast::Visibility::Hidden,
+                "hidden visibility",
+            ),
+            ("pkg forge f() {}", ast::Visibility::Pkg, "pkg visibility"),
+            (
+                "pkg(core::net) forge f() {}",
+                ast::Visibility::PkgPath(vec!["core".to_string(), "net".to_string()]),
+                "pkg(path) visibility",
+            ),
+        ];
+
+        for (source, expected, label) in cases {
+            let cst = parse_decl_node(source);
+            let lowerer = Lowerer::new(source);
+            let items = lowerer.lower_item(&cst);
+
+            let forge = items
+                .into_iter()
+                .find_map(|item| {
+                    if let ast::Item::Forge(f) = item {
+                        Some(f)
+                    } else {
+                        None
+                    }
+                })
+                .expect("expected forge item");
+
+            assert_eq!(forge.visibility, expected, "unexpected result for {label}");
+        }
+    }
+
+    #[test]
+    fn test_lower_macro_variadic_and_bridge_static_items() {
+        let macro_source = "macro gather(..args) { args }";
+        let macro_cst = parse_decl_node(macro_source);
+        let lowerer = Lowerer::new(macro_source);
+        let mut items = lowerer.lower_item(&macro_cst);
+
+        let mac = match items.remove(0) {
+            ast::Item::Macro(m) => m,
+            other => panic!("expected macro item, got {other:?}"),
+        };
+        assert_eq!(mac.name, "gather");
+        assert_eq!(mac.params.len(), 1);
+        assert!(mac.params[0].is_variadic);
+
+        let bridge_source = "bridge \"C\" { forge f() {} shape S {} static ~x: i32 = 1 }";
+        let bridge_cst = parse_decl_node(bridge_source);
+        let bridge_lowerer = Lowerer::new(bridge_source);
+        let mut bridge_items = bridge_lowerer.lower_item(&bridge_cst);
+
+        let bridge = match bridge_items.remove(0) {
+            ast::Item::Bridge(b) => b,
+            other => panic!("expected bridge item, got {other:?}"),
+        };
+
+        assert_eq!(bridge.abi.as_deref(), Some("C"));
+        assert!(bridge
+            .items
+            .iter()
+            .any(|item| matches!(item, ast::Item::Forge(f) if f.name == "f")));
+        assert!(bridge
+            .items
+            .iter()
+            .any(|item| matches!(item, ast::Item::Shape(s) if s.name == "S")));
+
+        let lowered_static = bridge.items.iter().find_map(|item| {
+            if let ast::Item::Static(s) = item {
+                Some(s)
+            } else {
+                None
+            }
+        });
+        let lowered_static = lowered_static.expect("expected static item inside bridge");
+        assert_eq!(lowered_static.name, "x");
+        assert!(lowered_static.is_mut);
+        assert!(matches!(lowered_static.ty, ast::Type::Prim(ref n) if n == "i32"));
+        assert!(matches!(
+            lowered_static.value,
+            Some(ast::Expr::Literal(ast::Literal::Int(1)))
+        ));
+    }
+
+    #[test]
+    fn test_lower_draw_and_type_forms() {
+        let draw_source = "draw std::io::*;";
+        let draw_cst = parse_decl_node(draw_source);
+        let draw_lowerer = Lowerer::new(draw_source);
+        let mut items = draw_lowerer.lower_item(&draw_cst);
+
+        let draw = match items.remove(0) {
+            ast::Item::Draw(d) => d,
+            other => panic!("expected draw item, got {other:?}"),
+        };
+        assert_eq!(draw.path, vec!["std".to_string(), "io".to_string()]);
+        assert!(draw.is_wildcard);
+
+        let lower_opt = Lowerer::new("?i32");
+        let opt = lower_opt.lower_type(&parse_type_node("?i32"));
+        assert!(matches!(opt, ast::Type::Optional(_)));
+
+        let lower_ptr = Lowerer::new("*~i32");
+        let ptr = lower_ptr.lower_type(&parse_type_node("*~i32"));
+        assert!(matches!(ptr, ast::Type::Pointer(_, true)));
+
+        let lower_witness = Lowerer::new("Witness<i32>");
+        let witness = lower_witness.lower_type(&parse_type_node("Witness<i32>"));
+        assert!(matches!(witness, ast::Type::Witness(_)));
+
+        let lower_path = Lowerer::new("Vec<i32>");
+        let path_ty = lower_path.lower_type(&parse_type_node("Vec<i32>"));
+        assert!(matches!(path_ty, ast::Type::Path(path, _) if path == vec!["Vec"]));
+
+        let lower_cascade = Lowerer::new("i32");
+        let cascade_node = SyntaxNode::new(
+            NodeKind::UnaryExpr,
+            vec![
+                SyntaxElement::Token(Token::new(
+                    TokenKind::Bang,
+                    Span::new(BytePos(0), BytePos(1), SourceId(0)),
+                )),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(Token::new(
+                        TokenKind::Ident,
+                        Span::new(BytePos(0), BytePos(3), SourceId(0)),
+                    ))],
+                )),
+            ],
+        );
+        let cascade = lower_cascade.lower_type(&cascade_node);
+        assert!(matches!(cascade, ast::Type::Cascade(_)));
+
+        let unknown_lowerer = Lowerer::new("");
+        let unknown = unknown_lowerer.lower_type(&SyntaxNode::new(NodeKind::Error, vec![]));
+        assert!(matches!(unknown, ast::Type::Error));
+    }
+
+    #[test]
+    fn test_lower_pattern_forms() {
+        let lowerer = Lowerer::new("~x");
+        let mut_pat = lowerer.lower_pattern(&parse_pattern_node("~x"));
+        assert!(matches!(
+            mut_pat,
+            ast::Pattern::Ident(name, true, _) if name == "x"
+        ));
+
+        let tuple_lowerer = Lowerer::new("(a, b)");
+        let tuple = tuple_lowerer.lower_pattern(&parse_pattern_node("(a, b)"));
+        assert!(matches!(tuple, ast::Pattern::Tuple(parts) if parts.len() == 2));
+
+        let slice_lowerer = Lowerer::new("[x, ..rest]");
+        let slice = slice_lowerer.lower_pattern(&parse_pattern_node("[x, ..rest]"));
+        assert!(
+            matches!(slice, ast::Pattern::Slice(parts) if parts.iter().any(|p| matches!(p, ast::Pattern::Rest(n) if n == "rest")))
+        );
+
+        let lit_lowerer = Lowerer::new("1");
+        let lit = lit_lowerer.lower_pattern(&parse_pattern_node("1"));
+        assert!(matches!(lit, ast::Pattern::Literal(ast::Literal::Int(1))));
+
+        let wildcard_lowerer = Lowerer::new("_");
+        let wildcard = wildcard_lowerer.lower_pattern(&parse_pattern_node("_"));
+        assert!(matches!(wildcard, ast::Pattern::Wildcard));
     }
 }
