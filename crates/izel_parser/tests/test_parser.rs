@@ -258,3 +258,67 @@ forge main() { give 0 }
     assert!(contains_kind(&root, NodeKind::DrawDecl));
     assert!(contains_kind(&root, NodeKind::ForgeDecl));
 }
+
+#[test]
+fn parses_additional_top_level_decl_forms() {
+    let source = r#"
+type MaybeI32 = ?i32
+draw std/io::*;
+static ~COUNTER: i32 = 1
+echo { let x = 1 }
+bridge "C" { forge puts(msg: str) static errno: i32 }
+ward Core { forge helper() { give 0 } }
+"#;
+
+    let root = parse_source(source);
+    assert!(contains_kind(&root, NodeKind::TypeAlias));
+    assert!(contains_kind(&root, NodeKind::DrawDecl));
+    assert!(contains_kind(&root, NodeKind::StaticDecl));
+    assert!(contains_kind(&root, NodeKind::EchoDecl));
+    assert!(contains_kind(&root, NodeKind::BridgeDecl));
+    assert!(contains_kind(&root, NodeKind::WardDecl));
+}
+
+#[test]
+fn parses_weave_impl_and_dual_shape_forms() {
+    let source = r#"
+weave Renderable: Base + Debug { forge render(self) }
+weave Renderable for Widget { forge render(self) { give } }
+dual shape Codec<T> { value: T, forge encode(self) { give 0 } }
+"#;
+
+    let root = parse_source(source);
+    assert!(contains_kind(&root, NodeKind::WeaveDecl));
+    assert!(contains_kind(&root, NodeKind::ImplBlock));
+    assert!(contains_kind(&root, NodeKind::DualDecl));
+    assert!(contains_kind(&root, NodeKind::Field));
+    assert!(count_kind(&root, NodeKind::ForgeDecl) >= 2);
+}
+
+#[test]
+fn parses_additional_expression_forms_in_forge_body() {
+    let source = r#"
+forge main() {
+    let x = obj?.field
+    let y = Type::<i32>{ value: 1 }
+    let z = bind |a| a + 1
+    let c = seek { 1 } catch err { 0 }
+    let w = zone arena { each item in items { while cond { loop { 0 } } } }
+    let m = foo.bar(1)
+    let p = val! or "msg"
+}
+"#;
+
+    let root = parse_source(source);
+    assert!(contains_kind(&root, NodeKind::MemberExpr));
+    assert!(contains_kind(&root, NodeKind::StructLiteral));
+    assert!(contains_kind(&root, NodeKind::BindExpr));
+    assert!(contains_kind(&root, NodeKind::SeekExpr));
+    assert!(contains_kind(&root, NodeKind::ZoneExpr));
+    assert!(contains_kind(&root, NodeKind::EachExpr));
+    assert!(contains_kind(&root, NodeKind::WhileExpr));
+    assert!(contains_kind(&root, NodeKind::LoopExpr));
+    assert!(contains_kind(&root, NodeKind::CallExpr));
+    assert!(contains_kind(&root, NodeKind::CascadeExpr));
+    assert!(count_token_kind(&root, TokenKind::Catch) >= 1);
+}

@@ -102,7 +102,20 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_command, Command};
+    use super::{create_project, parse_command, usage, Command};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_project_root(name: &str) -> PathBuf {
+        let mut path = std::env::temp_dir();
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after UNIX epoch")
+            .as_nanos();
+        path.push(format!("izel-pm-test-{}-{}", name, nonce));
+        path
+    }
 
     #[test]
     fn parse_help_when_no_args() {
@@ -137,5 +150,89 @@ mod tests {
                 args: vec!["a".to_string(), "b".to_string()]
             }
         );
+    }
+
+    #[test]
+    fn parse_run_without_separator_drops_extra_args() {
+        let got = parse_command(&["run".into(), "a".into(), "b".into()]).expect("run parse");
+        assert_eq!(got, Command::Run { args: vec![] });
+    }
+
+    #[test]
+    fn parse_new_requires_exactly_one_name_argument() {
+        let missing = parse_command(&["new".into()]).expect_err("new without name must fail");
+        let extra = parse_command(&["new".into(), "demo".into(), "extra".into()])
+            .expect_err("new with extra args must fail");
+
+        assert!(missing.contains("usage: izel new <name>"));
+        assert!(extra.contains("usage: izel new <name>"));
+    }
+
+    #[test]
+    fn parse_unknown_command_returns_error() {
+        let err = parse_command(&["deploy".into()]).expect_err("unknown command should fail");
+        assert!(err.contains("unknown command: deploy"));
+    }
+
+    #[test]
+    fn parse_help_aliases_are_accepted() {
+        assert_eq!(parse_command(&["help".into()]).unwrap(), Command::Help);
+        assert_eq!(parse_command(&["--help".into()]).unwrap(), Command::Help);
+        assert_eq!(parse_command(&["-h".into()]).unwrap(), Command::Help);
+    }
+
+    #[test]
+    fn usage_text_lists_supported_commands() {
+        let text = usage();
+        assert!(text.contains("izel new <name>"));
+        assert!(text.contains("izel build"));
+        assert!(text.contains("izel run [-- <args>]"));
+    }
+
+    #[test]
+    fn create_project_writes_manifest_and_main_stub() {
+        let root = temp_project_root("create-project");
+        let root_str = root.to_string_lossy().to_string();
+
+        create_project(&root_str).expect("project creation should succeed");
+
+        let manifest = root.join("Izel.toml");
+        let main = root.join("src/main.iz");
+        assert!(manifest.exists());
+        assert!(main.exists());
+
+        let manifest_src = fs::read_to_string(&manifest).expect("manifest should be readable");
+        let main_src = fs::read_to_string(&main).expect("main should be readable");
+
+        assert!(manifest_src.contains("[package]"));
+        assert!(manifest_src.contains("[dependencies]"));
+        assert!(main_src.contains("draw std::io"));
+        assert!(main_src.contains("Hello, Izel!"));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn create_project_is_idempotent_for_existing_files() {
+        let root = temp_project_root("idempotent");
+        let src = root.join("src");
+        fs::create_dir_all(&src).expect("setup src dir");
+
+        let manifest = root.join("Izel.toml");
+        let main = src.join("main.iz");
+        fs::write(&manifest, "[package]\nname=\"keep\"\nversion=\"0.1.0\"\n")
+            .expect("write existing manifest");
+        fs::write(&main, "forge main() { give }\n").expect("write existing main");
+
+        let root_str = root.to_string_lossy().to_string();
+        create_project(&root_str).expect("project creation should still succeed");
+
+        let manifest_after = fs::read_to_string(&manifest).expect("manifest should still exist");
+        let main_after = fs::read_to_string(&main).expect("main should still exist");
+
+        assert!(manifest_after.contains("name=\"keep\""));
+        assert!(main_after.contains("forge main()"));
+
+        let _ = fs::remove_dir_all(&root);
     }
 }
