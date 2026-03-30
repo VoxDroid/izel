@@ -1,3 +1,5 @@
+use izel_mir::optim::{Dce, Licm, PipelineFusion};
+use izel_mir::{BasicBlock, ControlFlow};
 use izel_mir::{Constant, Instruction, Local, LocalData, MirBody, Operand, Rvalue, Terminator};
 use izel_typeck::type_system::{PrimType, Type};
 
@@ -30,4 +32,164 @@ fn mir_body_allows_instruction_and_terminator_insertion() {
         block.terminator,
         Some(Terminator::Return(Some(Operand::Copy(Local(0)))))
     ));
+}
+
+#[test]
+fn dce_removes_unused_assignments_but_keeps_used_dataflow() {
+    let mut body = MirBody::new();
+    body.locals.push(LocalData {
+        name: "a".to_string(),
+        ty: Type::Prim(PrimType::I32),
+    });
+    body.locals.push(LocalData {
+        name: "b".to_string(),
+        ty: Type::Prim(PrimType::I32),
+    });
+    body.locals.push(LocalData {
+        name: "unused".to_string(),
+        ty: Type::Prim(PrimType::I32),
+    });
+    body.locals.push(LocalData {
+        name: "phi".to_string(),
+        ty: Type::Prim(PrimType::I32),
+    });
+
+    let entry = body.entry;
+    let block = body.blocks.node_weight_mut(entry).unwrap();
+    block.instructions.push(Instruction::Assign(
+        Local(0),
+        Rvalue::Use(Operand::Constant(Constant::Int(1))),
+    ));
+    block.instructions.push(Instruction::Assign(
+        Local(1),
+        Rvalue::Use(Operand::Copy(Local(0))),
+    ));
+    block.instructions.push(Instruction::Assign(
+        Local(2),
+        Rvalue::Use(Operand::Constant(Constant::Int(99))),
+    ));
+    block
+        .instructions
+        .push(Instruction::Phi(Local(3), vec![(entry, Local(1))]));
+    block.terminator = Some(Terminator::Return(Some(Operand::Copy(Local(3)))));
+
+    Dce::run(&mut body);
+
+    let block = body.blocks.node_weight(entry).unwrap();
+    assert_eq!(block.instructions.len(), 3);
+    assert!(!block
+        .instructions
+        .iter()
+        .any(|instr| matches!(instr, Instruction::Assign(Local(2), _))));
+}
+
+#[test]
+fn dce_handles_call_assert_and_switchint_usage() {
+    let mut body = MirBody::new();
+    body.locals.push(LocalData {
+        name: "arg".to_string(),
+        ty: Type::Prim(PrimType::I32),
+    });
+    body.locals.push(LocalData {
+        name: "res".to_string(),
+        ty: Type::Prim(PrimType::I32),
+    });
+    body.locals.push(LocalData {
+        name: "unused".to_string(),
+        ty: Type::Prim(PrimType::I32),
+    });
+
+    let entry = body.entry;
+    let block = body.blocks.node_weight_mut(entry).unwrap();
+    block.instructions.push(Instruction::Assign(
+        Local(0),
+        Rvalue::Use(Operand::Constant(Constant::Int(5))),
+    ));
+    block.instructions.push(Instruction::Call(
+        Some(Local(1)),
+        "id".to_string(),
+        vec![Operand::Copy(Local(0))],
+    ));
+    block.instructions.push(Instruction::Assert(
+        Operand::Copy(Local(1)),
+        "expected non-zero".to_string(),
+    ));
+    block.instructions.push(Instruction::Assign(
+        Local(2),
+        Rvalue::Use(Operand::Constant(Constant::Int(42))),
+    ));
+    block.terminator = Some(Terminator::SwitchInt(
+        Operand::Copy(Local(1)),
+        vec![(0, entry)],
+        entry,
+    ));
+
+    Dce::run(&mut body);
+
+    let block = body.blocks.node_weight(entry).unwrap();
+    assert!(!block
+        .instructions
+        .iter()
+        .any(|instr| matches!(instr, Instruction::Assign(Local(2), _))));
+}
+
+#[test]
+fn dce_clears_unreachable_blocks() {
+    let mut body = MirBody::new();
+    body.locals.push(LocalData {
+        name: "x".to_string(),
+        ty: Type::Prim(PrimType::I32),
+    });
+    body.locals.push(LocalData {
+        name: "y".to_string(),
+        ty: Type::Prim(PrimType::I32),
+    });
+
+    let entry = body.entry;
+    let reachable = body.blocks.add_node(BasicBlock {
+        instructions: Vec::new(),
+        terminator: None,
+    });
+    let unreachable = body.blocks.add_node(BasicBlock {
+        instructions: Vec::new(),
+        terminator: None,
+    });
+    body.blocks
+        .add_edge(entry, reachable, ControlFlow::Unconditional);
+
+    let entry_block = body.blocks.node_weight_mut(entry).unwrap();
+    entry_block.instructions.push(Instruction::Assign(
+        Local(0),
+        Rvalue::Use(Operand::Constant(Constant::Int(10))),
+    ));
+    entry_block.terminator = Some(Terminator::Goto(reachable));
+
+    let reachable_block = body.blocks.node_weight_mut(reachable).unwrap();
+    reachable_block.instructions.push(Instruction::Assign(
+        Local(1),
+        Rvalue::Use(Operand::Copy(Local(0))),
+    ));
+    reachable_block.terminator = Some(Terminator::Return(Some(Operand::Copy(Local(1)))));
+
+    let dead_block = body.blocks.node_weight_mut(unreachable).unwrap();
+    dead_block.instructions.push(Instruction::Assign(
+        Local(1),
+        Rvalue::Use(Operand::Constant(Constant::Int(999))),
+    ));
+    dead_block.terminator = Some(Terminator::Abort);
+
+    Dce::run(&mut body);
+
+    let dead_block = body.blocks.node_weight(unreachable).unwrap();
+    assert!(dead_block.instructions.is_empty());
+    assert!(dead_block.terminator.is_none());
+}
+
+#[test]
+fn optimization_pass_stubs_are_callable() {
+    let mut body = MirBody::new();
+    PipelineFusion::run(&mut body);
+    Licm::run(&mut body);
+
+    assert!(body.blocks.node_weight(body.entry).is_some());
 }

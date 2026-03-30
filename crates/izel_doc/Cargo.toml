@@ -9,3 +9,6 @@ description.workspace = true
 
 [dependencies]
 izel_parser = { path = "../izel_parser", version = "0.1.0" }
+
+[dev-dependencies]
+izel_span = { workspace = true }

@@ -538,6 +538,7 @@ name = "izel_doc"
 version = "0.1.0"
 dependencies = [
  "izel_parser",
+ "izel_span",
 ]
 
 [[package]]
