@@ -1,6 +1,28 @@
+use izel_lexer::{Lexer, TokenKind};
 use izel_parser::ast;
-use izel_typeck::type_system::{Lifetime, PrimType, Type};
+use izel_span::SourceId;
+use izel_typeck::type_system::{Effect, EffectSet, Lifetime, PrimType, Type};
 use izel_typeck::TypeChecker;
+
+fn parse_module(source: &str) -> ast::Module {
+    let mut lexer = Lexer::new(source, SourceId(0));
+    let mut tokens = Vec::new();
+
+    loop {
+        let token = lexer.next_token();
+        let kind = token.kind;
+        tokens.push(token);
+        if kind == TokenKind::Eof {
+            break;
+        }
+    }
+
+    let mut parser = izel_parser::Parser::new(tokens, source.to_string());
+    parser.source = source.to_string();
+    let cst = parser.parse_source_file();
+    let lowerer = izel_ast_lower::Lowerer::new(source);
+    lowerer.lower_module(&cst)
+}
 
 #[test]
 fn with_builtins_registers_core_primitive_types_and_ptr() {
@@ -55,4 +77,79 @@ fn checking_empty_module_emits_no_diagnostics() {
 
     checker.check_ast(&module);
     assert!(checker.diagnostics.is_empty());
+}
+
+#[test]
+fn check_project_collects_drawn_module_signatures() {
+    let main = parse_module(
+        r#"
+draw std/io;
+forge main() -> i32 {
+    helper()
+}
+"#,
+    );
+
+    let imported = parse_module(
+        r#"
+forge helper() -> i32 {
+    7
+}
+"#,
+    );
+
+    let mut checker = TypeChecker::with_builtins();
+    let mut others = std::collections::HashMap::new();
+    others.insert("std/io".to_string(), imported);
+
+    checker.check_project(&main, others);
+
+    assert!(
+        checker.resolve_name("helper").is_some(),
+        "drawn module symbol should be imported into the current scope"
+    );
+    assert!(checker.handled_modules.contains("std/io"));
+    assert!(
+        checker.diagnostics.is_empty(),
+        "draw/import flow should remain diagnostic-free: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn branch_effects_merge_when_forge_declares_union_of_arm_effects() {
+    let module = parse_module(
+        r#"
+forge io_call() -> void !io {}
+forge net_call() -> void !net {}
+
+forge choose(flag: bool) -> void !io !net {
+    branch flag {
+        true => io_call(),
+        false => net_call(),
+    }
+}
+"#,
+    );
+
+    let mut checker = TypeChecker::with_builtins();
+    checker.check_ast(&module);
+
+    assert!(
+        checker.diagnostics.is_empty(),
+        "branch arm effects should merge into declared forge effects: {:?}",
+        checker.diagnostics
+    );
+}
+
+#[test]
+fn pure_effect_expectation_rejects_io_effect_set() {
+    let mut checker = TypeChecker::new();
+    let actual = EffectSet::Concrete(vec![Effect::IO]);
+    let declared_pure = EffectSet::Concrete(vec![Effect::Pure]);
+
+    assert!(
+        !checker.unify_effects(&actual, &declared_pure),
+        "effect unification should reject io where pure is required"
+    );
 }

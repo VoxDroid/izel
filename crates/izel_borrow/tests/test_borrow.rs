@@ -70,3 +70,87 @@ fn borrow_checker_reports_use_after_move_for_non_copy_type() {
         .iter()
         .any(|e| e.contains("Use of uninitialized or moved variable: x")));
 }
+
+#[test]
+fn reborrow_after_last_use_in_later_block_is_allowed() {
+    let mut mir = MirBody::new();
+    let x = Local(0);
+    let mut_ref = Local(1);
+    let shared_ref = Local(2);
+    let sink1 = Local(3);
+    let sink2 = Local(4);
+
+    mir.locals.push(LocalData {
+        name: "x".to_string(),
+        ty: Type::Adt(izel_resolve::DefId(7)),
+    });
+    mir.locals.push(LocalData {
+        name: "mx".to_string(),
+        ty: Type::Pointer(
+            Box::new(Type::Adt(izel_resolve::DefId(7))),
+            true,
+            izel_typeck::type_system::Lifetime::Anonymous(0),
+        ),
+    });
+    mir.locals.push(LocalData {
+        name: "sx".to_string(),
+        ty: Type::Pointer(
+            Box::new(Type::Adt(izel_resolve::DefId(7))),
+            false,
+            izel_typeck::type_system::Lifetime::Anonymous(0),
+        ),
+    });
+    mir.locals.push(LocalData {
+        name: "sink1".to_string(),
+        ty: Type::Pointer(
+            Box::new(Type::Adt(izel_resolve::DefId(7))),
+            true,
+            izel_typeck::type_system::Lifetime::Anonymous(0),
+        ),
+    });
+    mir.locals.push(LocalData {
+        name: "sink2".to_string(),
+        ty: Type::Pointer(
+            Box::new(Type::Adt(izel_resolve::DefId(7))),
+            false,
+            izel_typeck::type_system::Lifetime::Anonymous(0),
+        ),
+    });
+
+    let block1 = mir.entry;
+    let block2 = mir.blocks.add_node(izel_mir::BasicBlock {
+        instructions: Vec::new(),
+        terminator: None,
+    });
+    mir.blocks
+        .add_edge(block1, block2, izel_mir::ControlFlow::Unconditional);
+
+    let b1 = mir.blocks.node_weight_mut(block1).unwrap();
+    b1.instructions.push(Instruction::Assign(
+        x,
+        Rvalue::Use(Operand::Constant(Constant::Int(1))),
+    ));
+    b1.instructions
+        .push(Instruction::Assign(mut_ref, Rvalue::Ref(x, true)));
+    b1.instructions.push(Instruction::Assign(
+        sink1,
+        Rvalue::Use(Operand::Move(mut_ref)),
+    ));
+    b1.terminator = Some(izel_mir::Terminator::Goto(block2));
+
+    let b2 = mir.blocks.node_weight_mut(block2).unwrap();
+    b2.instructions
+        .push(Instruction::Assign(shared_ref, Rvalue::Ref(x, false)));
+    b2.instructions.push(Instruction::Assign(
+        sink2,
+        Rvalue::Use(Operand::Copy(shared_ref)),
+    ));
+
+    let mut checker = BorrowChecker::new();
+    let result = checker.check(&mir);
+    assert!(
+        result.is_ok(),
+        "reborrow after last use should be accepted, got: {:?}",
+        result.err()
+    );
+}
