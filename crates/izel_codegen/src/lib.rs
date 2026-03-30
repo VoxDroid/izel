@@ -644,7 +644,43 @@ mod tests {
     use izel_hir::*;
     use izel_parser::ast;
     use izel_span::Span;
-    use izel_typeck::type_system::{PrimType, Type};
+    use izel_typeck::type_system::{Lifetime, PrimType, Type};
+
+    fn param(id: usize, name: &str, ty: Type) -> HirParam {
+        HirParam {
+            name: name.to_string(),
+            def_id: DefId(id),
+            ty,
+            default_value: None,
+            is_variadic: false,
+            span: Span::dummy(),
+        }
+    }
+
+    fn intrinsic_forge(
+        id: usize,
+        name: &str,
+        intrinsic: &str,
+        params: Vec<HirParam>,
+        ret_type: Type,
+    ) -> HirForge {
+        HirForge {
+            name: name.to_string(),
+            name_span: Span::dummy(),
+            def_id: DefId(id),
+            params,
+            ret_type,
+            attributes: vec![ast::Attribute {
+                name: "intrinsic".to_string(),
+                args: vec![ast::Expr::Literal(ast::Literal::Str(intrinsic.to_string()))],
+                span: Span::dummy(),
+            }],
+            body: None,
+            requires: vec![],
+            ensures: vec![],
+            span: Span::dummy(),
+        }
+    }
 
     #[test]
     fn test_intrinsic_codegen() -> Result<()> {
@@ -878,6 +914,318 @@ mod tests {
         assert!(ir.contains("define i32 @add(i32 %0, i32 %1)"));
         assert!(ir.contains("store i32 30, ptr %ret"));
         assert!(ir.contains("ret i32 %load_tmp"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_additional_intrinsics_and_helper_caches() -> Result<()> {
+        let context = Context::create();
+        let mut codegen = Codegen::new(&context, "extra_intrinsics", "");
+        let mir_bodies = HashMap::new();
+
+        let items = vec![
+            HirItem::Forge(Box::new(intrinsic_forge(
+                100,
+                "print_int",
+                "io_print_int",
+                vec![param(101, "v", Type::Prim(PrimType::I32))],
+                Type::Prim(PrimType::Void),
+            ))),
+            HirItem::Forge(Box::new(intrinsic_forge(
+                102,
+                "print_nl",
+                "io_print_newline",
+                vec![],
+                Type::Prim(PrimType::Void),
+            ))),
+            HirItem::Forge(Box::new(intrinsic_forge(
+                103,
+                "alloc",
+                "mem_alloc",
+                vec![param(104, "size", Type::Prim(PrimType::I64))],
+                Type::Pointer(Box::new(Type::Prim(PrimType::I8)), false, Lifetime::Static),
+            ))),
+            HirItem::Forge(Box::new(intrinsic_forge(
+                105,
+                "free_mem",
+                "mem_free",
+                vec![param(
+                    106,
+                    "ptr",
+                    Type::Pointer(Box::new(Type::Prim(PrimType::I8)), false, Lifetime::Static),
+                )],
+                Type::Prim(PrimType::Void),
+            ))),
+            HirItem::Forge(Box::new(intrinsic_forge(
+                107,
+                "ceil",
+                "f64_ceil",
+                vec![param(108, "x", Type::Prim(PrimType::F64))],
+                Type::Prim(PrimType::F64),
+            ))),
+            HirItem::Forge(Box::new(intrinsic_forge(
+                109,
+                "floor",
+                "f64_floor",
+                vec![param(110, "x", Type::Prim(PrimType::F64))],
+                Type::Prim(PrimType::F64),
+            ))),
+        ];
+
+        for item in &items {
+            codegen.declare_item(item)?;
+            codegen.gen_item(item, &mir_bodies)?;
+        }
+
+        let ir = codegen.emit_llvm_ir();
+        assert!(ir.contains("define void @_iz_print_int(i32 %0)"));
+        assert!(ir.contains("define void @_iz_print_nl()"));
+        assert!(ir.contains("declare i32 @printf(ptr, ...)"));
+        assert!(ir.contains("declare ptr @malloc(i64)"));
+        assert!(ir.contains("declare void @free(ptr)"));
+        assert!(ir.contains("call double @llvm.ceil.f64(double %0)"));
+        assert!(ir.contains("call double @llvm.floor.f64(double %0)"));
+
+        // Repeated lookups should return existing declarations.
+        let printf1 = codegen.get_printf()?;
+        let printf2 = codegen.get_printf()?;
+        assert_eq!(
+            printf1.as_global_value().as_pointer_value(),
+            printf2.as_global_value().as_pointer_value()
+        );
+
+        let malloc1 = codegen.get_malloc()?;
+        let malloc2 = codegen.get_malloc()?;
+        assert_eq!(
+            malloc1.as_global_value().as_pointer_value(),
+            malloc2.as_global_value().as_pointer_value()
+        );
+
+        let free1 = codegen.get_free()?;
+        let free2 = codegen.get_free()?;
+        assert_eq!(
+            free1.as_global_value().as_pointer_value(),
+            free2.as_global_value().as_pointer_value()
+        );
+
+        let err = codegen
+            .get_intrinsic("llvm.unknown.thing")
+            .expect_err("unknown llvm intrinsic should error");
+        assert!(err.to_string().contains("Unsupported LLVM intrinsic"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_codegen_error_paths_for_intrinsics_and_predeclare() {
+        let context = Context::create();
+        let mut codegen = Codegen::new(&context, "errors", "");
+        let mir_bodies = HashMap::new();
+
+        let unknown = HirItem::Forge(Box::new(intrinsic_forge(
+            120,
+            "mystery",
+            "totally_unknown",
+            vec![],
+            Type::Prim(PrimType::Void),
+        )));
+        codegen
+            .declare_item(&unknown)
+            .expect("declare unknown intrinsic forge");
+        let err = codegen
+            .gen_item(&unknown, &mir_bodies)
+            .expect_err("unknown intrinsic should fail during body generation");
+        assert!(err.to_string().contains("Unknown intrinsic"));
+
+        let not_declared = HirItem::Forge(Box::new(HirForge {
+            name: "plain".to_string(),
+            name_span: Span::dummy(),
+            def_id: DefId(121),
+            params: vec![],
+            ret_type: Type::Prim(PrimType::I32),
+            attributes: vec![],
+            body: None,
+            requires: vec![],
+            ensures: vec![],
+            span: Span::dummy(),
+        }));
+        let err = codegen
+            .gen_item(&not_declared, &mir_bodies)
+            .expect_err("non-declared forge should fail");
+        assert!(err.to_string().contains("not pre-declared"));
+    }
+
+    #[test]
+    fn test_mir_codegen_control_flow_and_operand_variants() -> Result<()> {
+        use izel_mir::LocalData;
+
+        let context = Context::create();
+        let module = context.create_module("test_mir_flow");
+        let builder = context.create_builder();
+
+        let i32_ty = context.i32_type();
+        let bool_ty = context.bool_type();
+        let void_ty = context.void_type();
+        module.add_function(
+            "_iz_callee",
+            i32_ty.fn_type(&[i32_ty.into(), i32_ty.into()], false),
+            None,
+        );
+        module.add_function("_iz_sink", void_ty.fn_type(&[bool_ty.into()], false), None);
+
+        let function = module.add_function("flow", i32_ty.fn_type(&[], false), None);
+
+        let mut body = MirBody::new();
+        let branch_bb = body.blocks.add_node(izel_mir::BasicBlock {
+            instructions: Vec::new(),
+            terminator: None,
+        });
+        let exit_bb = body.blocks.add_node(izel_mir::BasicBlock {
+            instructions: Vec::new(),
+            terminator: None,
+        });
+
+        body.locals = vec![
+            LocalData {
+                name: "ret".into(),
+                ty: Type::Prim(PrimType::I32),
+            },
+            LocalData {
+                name: "tmp".into(),
+                ty: Type::Prim(PrimType::I32),
+            },
+            LocalData {
+                name: "flag".into(),
+                ty: Type::Prim(PrimType::Bool),
+            },
+            LocalData {
+                name: "flt".into(),
+                ty: Type::Prim(PrimType::F64),
+            },
+            LocalData {
+                name: "ptr".into(),
+                ty: Type::Pointer(Box::new(Type::Prim(PrimType::I32)), false, Lifetime::Static),
+            },
+        ];
+
+        {
+            let entry = body.entry;
+            let bb = body.blocks.node_weight_mut(entry).expect("entry block");
+            bb.instructions.push(Instruction::Assign(
+                Local(0),
+                Rvalue::Use(Operand::Constant(Constant::Int(5))),
+            ));
+            bb.instructions.push(Instruction::Assign(
+                Local(1),
+                Rvalue::Unary(UnOp::Neg, Operand::Constant(Constant::Int(2))),
+            ));
+            bb.instructions.push(Instruction::Assign(
+                Local(2),
+                Rvalue::Use(Operand::Constant(Constant::Bool(true))),
+            ));
+            bb.instructions.push(Instruction::Assign(
+                Local(3),
+                Rvalue::Use(Operand::Constant(Constant::Float(3.5))),
+            ));
+            bb.instructions
+                .push(Instruction::Assign(Local(4), Rvalue::Ref(Local(1), false)));
+            bb.instructions.push(Instruction::Call(
+                Some(Local(0)),
+                "callee".to_string(),
+                vec![Operand::Copy(Local(0)), Operand::Move(Local(1))],
+            ));
+            bb.instructions.push(Instruction::Call(
+                None,
+                "sink".to_string(),
+                vec![Operand::Copy(Local(2))],
+            ));
+            bb.instructions.push(Instruction::Assert(
+                Operand::Copy(Local(2)),
+                "must hold".to_string(),
+            ));
+            bb.instructions.push(Instruction::Phi(Local(0), vec![]));
+            bb.instructions.push(Instruction::StorageLive(Local(0)));
+            bb.instructions
+                .push(Instruction::ZoneEnter("z".to_string()));
+            bb.terminator = Some(Terminator::SwitchInt(
+                Operand::Copy(Local(0)),
+                vec![(5, branch_bb)],
+                exit_bb,
+            ));
+        }
+
+        {
+            let bb = body
+                .blocks
+                .node_weight_mut(branch_bb)
+                .expect("branch block");
+            bb.instructions.push(Instruction::Assign(
+                Local(0),
+                Rvalue::Binary(
+                    BinOp::Sub,
+                    Operand::Copy(Local(0)),
+                    Operand::Constant(Constant::Int(1)),
+                ),
+            ));
+            bb.terminator = Some(Terminator::Goto(exit_bb));
+        }
+
+        {
+            let bb = body.blocks.node_weight_mut(exit_bb).expect("exit block");
+            bb.instructions.push(Instruction::ZoneExit("z".to_string()));
+            bb.terminator = Some(Terminator::Return(Some(Operand::Copy(Local(0)))));
+        }
+
+        let mut mir_codegen = MirCodegen::new(&context, &module, &builder);
+        mir_codegen.gen_mir_body(function, &body)?;
+
+        let str_err = mir_codegen
+            .gen_operand(&Operand::Constant(Constant::Str("x".to_string())), &body)
+            .expect_err("string constants are not yet supported in codegen");
+        assert!(str_err
+            .to_string()
+            .contains("String constants not yet implemented"));
+
+        let ir = module.print_to_string().to_string();
+        assert!(ir.contains("call i32 @_iz_callee(i32"));
+        assert!(ir.contains("call void @_iz_sink(i1"));
+        assert!(ir.contains("switch i32"));
+        assert!(ir.contains("assert_fail"));
+        assert!(ir.contains("br label"));
+        assert!(ir.contains("ret i32"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_mir_codegen_abort_return_none_and_missing_terminator() -> Result<()> {
+        let context = Context::create();
+        let module = context.create_module("test_mir_misc_terms");
+        let builder = context.create_builder();
+
+        let void_fn_ty = context.void_type().fn_type(&[], false);
+
+        let abort_fn = module.add_function("abort_fn", void_fn_ty, None);
+        let mut abort_body = MirBody::new();
+        abort_body.blocks[abort_body.entry].terminator = Some(Terminator::Abort);
+        MirCodegen::new(&context, &module, &builder).gen_mir_body(abort_fn, &abort_body)?;
+
+        let ret_void_fn = module.add_function("ret_void_fn", void_fn_ty, None);
+        let mut ret_void_body = MirBody::new();
+        ret_void_body.blocks[ret_void_body.entry].terminator = Some(Terminator::Return(None));
+        MirCodegen::new(&context, &module, &builder).gen_mir_body(ret_void_fn, &ret_void_body)?;
+
+        let no_term_fn = module.add_function("no_term_fn", void_fn_ty, None);
+        let no_term_body = MirBody::new();
+        MirCodegen::new(&context, &module, &builder).gen_mir_body(no_term_fn, &no_term_body)?;
+
+        let ir = module.print_to_string().to_string();
+        assert!(ir.contains("define void @abort_fn()"));
+        assert!(ir.contains("define void @ret_void_fn()"));
+        assert!(ir.contains("ret void"));
+        assert!(ir.contains("define void @no_term_fn()"));
+        assert!(ir.contains("unreachable"));
 
         Ok(())
     }

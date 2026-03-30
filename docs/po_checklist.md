@@ -1,5 +1,22 @@
 # Izel Project Overview Checklist
 
+## Verification Snapshot (2026-03-30)
+
+This checklist was reconciled against the repository using:
+
+- `cargo check --workspace --all-targets` (pass)
+- `cargo test --workspace` (pass)
+- `cargo fmt --all -- --check` (pass)
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` (pass)
+- `bash tools/ci/check_system_deps.sh` (pass after installing `clang`, `lld`, `cmake`)
+- `bash tools/ci/check_coverage.sh --report-only` (pass, measured line coverage: `69.36%`)
+
+Key alignment notes:
+- Overview section 32 currently advertises a broader CLI surface than implemented (`izel` and `izelc`).
+- Overview section 33 directory map diverges from the current layout (for example, std content is split across `crates/izel_std`, `std/`, and `library/std`, and `docs/reference/` is not present).
+- Exhaustive test claims are tracked in `docs/tests_checklist.md` with evidence-based status.
+- Crate-level integration placeholders were replaced with concrete tests; remaining gap to 100% coverage is tracked explicitly in `docs/tests_checklist.md`.
+
 ## 1. Identity & Vision
 - [ ] The Name
 - [ ] The Mission
@@ -167,23 +184,23 @@
 - [x] Testing
 
 ## 32. Toolchain
-- [x] `izelc` — Compiler Binary
-- [x] `izel` — Package Manager & Build System
+- [ ] `izelc` — Compiler Binary
+- [ ] `izel` — Package Manager & Build System
 - [x] `Izel.toml` — Project Manifest
 - [x] `izel-lsp` — Language Server (LSP 3.17)
 - [x] `izel-fmt` — Formatter
 - [x] `izel-lint` — Linter
 
 ## 33. Project Directory Structure
-- [x] Scaffolding Complete
+- [ ] Scaffolding Complete
 
 ## 34. Milestones & Roadmap
-- [x] Phase 0 — Bootstrap (Months 1–2)
-- [x] Phase 1 — Core Language (Months 3–5)
-- [x] Phase 2 — Type System & Safety (Months 6–8)
-- [x] Phase 3 — Unique Features (Months 9–12)
-- [x] Phase 4 — Standard Library v0.1 (Months 13–15)
-- [x] Phase 5 — Toolchain (Months 16–18)
+- [ ] Phase 0 — Bootstrap (Months 1–2)
+- [ ] Phase 1 — Core Language (Months 3–5)
+- [ ] Phase 2 — Type System & Safety (Months 6–8)
+- [ ] Phase 3 — Unique Features (Months 9–12)
+- [ ] Phase 4 — Standard Library v0.1 (Months 13–15)
+- [ ] Phase 5 — Toolchain (Months 16–18)
 - [x] Phase 6 — Optimization & Hardening (Months 19–22)
 - [x] Phase 7 — Self-Hosting (Months 23+)
 

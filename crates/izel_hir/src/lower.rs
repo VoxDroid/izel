@@ -239,3 +239,412 @@ impl<'a> HirLowerer<'a> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use izel_resolve::Resolver;
+    use izel_span::{BytePos, SourceId};
+    use izel_typeck::type_system::{EffectSet, PrimType};
+    use rustc_hash::FxHashMap;
+
+    fn sp(n: u32) -> Span {
+        Span::new(BytePos(n), BytePos(n + 1), SourceId(0))
+    }
+
+    fn ast_prim(name: &str) -> ast::Type {
+        ast::Type::Prim(name.to_string())
+    }
+
+    #[test]
+    fn lower_module_flattens_dual_and_ignores_unsupported_items() {
+        let resolver = Resolver::new(None);
+        let def_types = FxHashMap::default();
+
+        let shape_span = sp(10);
+        let scroll_span = sp(20);
+        let forge_name_span = sp(30);
+
+        {
+            let mut ids = resolver.def_ids.write().expect("def_ids lock");
+            ids.insert(shape_span, DefId(1));
+            ids.insert(scroll_span, DefId(2));
+            ids.insert(forge_name_span, DefId(3));
+        }
+
+        let module = ast::Module {
+            items: vec![
+                ast::Item::Shape(ast::Shape {
+                    name: "S".to_string(),
+                    visibility: ast::Visibility::Open,
+                    generic_params: vec![],
+                    fields: vec![],
+                    attributes: vec![],
+                    invariants: vec![],
+                    span: shape_span,
+                }),
+                ast::Item::Dual(ast::Dual {
+                    name: "D".to_string(),
+                    visibility: ast::Visibility::Open,
+                    generic_params: vec![],
+                    items: vec![
+                        ast::Item::Scroll(ast::Scroll {
+                            name: "E".to_string(),
+                            visibility: ast::Visibility::Open,
+                            variants: vec![],
+                            attributes: vec![],
+                            span: scroll_span,
+                        }),
+                        ast::Item::Alias(ast::Alias {
+                            name: "Ignored".to_string(),
+                            visibility: ast::Visibility::Open,
+                            ty: ast_prim("i32"),
+                            attributes: vec![],
+                            span: sp(21),
+                        }),
+                    ],
+                    attributes: vec![],
+                    span: sp(22),
+                }),
+                ast::Item::Ward(ast::Ward {
+                    name: "W".to_string(),
+                    visibility: ast::Visibility::Open,
+                    items: vec![ast::Item::Forge(ast::Forge {
+                        name: "inside".to_string(),
+                        name_span: forge_name_span,
+                        visibility: ast::Visibility::Open,
+                        is_flow: false,
+                        generic_params: vec![],
+                        params: vec![],
+                        ret_type: ast_prim("i32"),
+                        effects: vec![],
+                        attributes: vec![],
+                        requires: vec![],
+                        ensures: vec![],
+                        body: Some(ast::Block {
+                            stmts: vec![],
+                            expr: None,
+                            span: sp(31),
+                        }),
+                        span: sp(32),
+                    })],
+                    attributes: vec![],
+                    span: sp(23),
+                }),
+                ast::Item::Draw(ast::Draw {
+                    path: vec!["std".to_string(), "io".to_string()],
+                    is_wildcard: true,
+                    span: sp(24),
+                }),
+                ast::Item::Echo(ast::Echo {
+                    body: ast::Block {
+                        stmts: vec![],
+                        expr: Some(Box::new(ast::Expr::Literal(ast::Literal::Int(1)))),
+                        span: sp(25),
+                    },
+                    attributes: vec![],
+                    span: sp(26),
+                }),
+                ast::Item::Alias(ast::Alias {
+                    name: "TopIgnored".to_string(),
+                    visibility: ast::Visibility::Open,
+                    ty: ast_prim("i32"),
+                    attributes: vec![],
+                    span: sp(27),
+                }),
+            ],
+        };
+
+        let lowerer = HirLowerer::new(&resolver, &def_types);
+        let hir = lowerer.lower_module(&module);
+
+        assert_eq!(hir.items.len(), 5);
+        assert!(matches!(hir.items[0], HirItem::Shape(_)));
+        assert!(matches!(hir.items[1], HirItem::Scroll(_)));
+        assert!(matches!(hir.items[2], HirItem::Ward(_)));
+        assert!(matches!(hir.items[3], HirItem::Draw(_)));
+        assert!(matches!(hir.items[4], HirItem::Echo(_)));
+
+        match &hir.items[2] {
+            HirItem::Ward(ward) => {
+                assert_eq!(ward.items.len(), 1);
+                assert!(matches!(ward.items[0], HirItem::Forge(_)));
+            }
+            _ => panic!("expected ward item"),
+        }
+    }
+
+    #[test]
+    fn lower_forge_reads_type_info_for_return_param_and_calls() {
+        let resolver = Resolver::new(None);
+
+        let forge_span = sp(100);
+        let param_span = sp(101);
+        let local_span = sp(102);
+        let callee_span = sp(103);
+
+        {
+            let mut ids = resolver.def_ids.write().expect("def_ids lock");
+            ids.insert(forge_span, DefId(10));
+            ids.insert(param_span, DefId(11));
+            ids.insert(local_span, DefId(12));
+            ids.insert(callee_span, DefId(13));
+        }
+
+        let mut def_types = FxHashMap::default();
+        def_types.insert(
+            DefId(10),
+            Type::Function {
+                params: vec![Type::Prim(PrimType::I64)],
+                ret: Box::new(Type::Prim(PrimType::Bool)),
+                effects: EffectSet::Concrete(vec![]),
+            },
+        );
+        def_types.insert(DefId(11), Type::Prim(PrimType::I64));
+        def_types.insert(DefId(12), Type::Prim(PrimType::I32));
+        def_types.insert(
+            DefId(13),
+            Type::Function {
+                params: vec![],
+                ret: Box::new(Type::Prim(PrimType::I32)),
+                effects: EffectSet::Concrete(vec![]),
+            },
+        );
+
+        let forge = ast::Forge {
+            name: "f".to_string(),
+            name_span: forge_span,
+            visibility: ast::Visibility::Open,
+            is_flow: false,
+            generic_params: vec![],
+            params: vec![ast::Param {
+                name: "p".to_string(),
+                ty: ast_prim("i64"),
+                default_value: Some(ast::Expr::Literal(ast::Literal::Int(7))),
+                is_variadic: false,
+                span: param_span,
+            }],
+            ret_type: ast_prim("bool"),
+            effects: vec![],
+            attributes: vec![],
+            requires: vec![ast::Expr::Call(
+                Box::new(ast::Expr::Ident("callee".to_string(), callee_span)),
+                vec![],
+            )],
+            ensures: vec![ast::Expr::Binary(
+                ast::BinaryOp::Eq,
+                Box::new(ast::Expr::Ident("x".to_string(), local_span)),
+                Box::new(ast::Expr::Literal(ast::Literal::Int(1))),
+            )],
+            body: Some(ast::Block {
+                stmts: vec![ast::Stmt::Let {
+                    pat: ast::Pattern::Ident("x".to_string(), false, local_span),
+                    ty: None,
+                    init: Some(ast::Expr::Literal(ast::Literal::Int(3))),
+                    span: sp(104),
+                }],
+                expr: Some(Box::new(ast::Expr::Ident("x".to_string(), local_span))),
+                span: sp(105),
+            }),
+            span: sp(106),
+        };
+
+        let module = ast::Module {
+            items: vec![ast::Item::Forge(forge)],
+        };
+        let lowerer = HirLowerer::new(&resolver, &def_types);
+        let hir = lowerer.lower_module(&module);
+
+        let forge = match &hir.items[0] {
+            HirItem::Forge(f) => f,
+            _ => panic!("expected forge item"),
+        };
+
+        assert_eq!(forge.def_id, DefId(10));
+        assert_eq!(forge.ret_type, Type::Prim(PrimType::Bool));
+        assert_eq!(forge.params[0].def_id, DefId(11));
+        assert_eq!(forge.params[0].ty, Type::Prim(PrimType::I64));
+        assert!(forge.params[0].default_value.is_some());
+
+        match &forge.requires[0] {
+            HirExpr::Call(_, _, _, ty) => assert_eq!(*ty, Type::Prim(PrimType::I32)),
+            _ => panic!("expected lowered call in requires"),
+        }
+
+        let HirBlock { stmts, expr, .. } = forge.body.as_ref().expect("forge body");
+        assert_eq!(stmts.len(), 1);
+        assert!(expr.is_some());
+    }
+
+    #[test]
+    fn lower_stmt_and_expr_cover_special_and_fallback_paths() {
+        let resolver = Resolver::new(None);
+        let mut def_types = FxHashMap::default();
+
+        let ident_span = sp(200);
+        let member_span = sp(201);
+        let callee_span = sp(202);
+
+        {
+            let mut ids = resolver.def_ids.write().expect("def_ids lock");
+            ids.insert(ident_span, DefId(20));
+            ids.insert(member_span, DefId(21));
+            ids.insert(callee_span, DefId(22));
+        }
+
+        def_types.insert(DefId(20), Type::Prim(PrimType::I32));
+        def_types.insert(DefId(21), Type::Prim(PrimType::Bool));
+        def_types.insert(
+            DefId(22),
+            Type::Function {
+                params: vec![],
+                ret: Box::new(Type::Prim(PrimType::I16)),
+                effects: EffectSet::Concrete(vec![]),
+            },
+        );
+
+        let lowerer = HirLowerer::new(&resolver, &def_types);
+
+        let unsupported_let = ast::Stmt::Let {
+            pat: ast::Pattern::Wildcard,
+            ty: None,
+            init: Some(ast::Expr::Literal(ast::Literal::Int(1))),
+            span: sp(203),
+        };
+        match lowerer.lower_stmt(&unsupported_let) {
+            HirStmt::Let {
+                name, def_id, ty, ..
+            } => {
+                assert_eq!(name, "_hir_pattern_unsupported");
+                assert_eq!(def_id, DefId(0));
+                assert_eq!(ty, Type::Error);
+            }
+            _ => panic!("expected let statement"),
+        }
+
+        let expr_stmt = ast::Stmt::Expr(ast::Expr::Unary(
+            ast::UnaryOp::Neg,
+            Box::new(ast::Expr::Literal(ast::Literal::Int(2))),
+        ));
+        assert!(matches!(lowerer.lower_stmt(&expr_stmt), HirStmt::Expr(_)));
+
+        let ident = ast::Expr::Ident("x".to_string(), ident_span);
+        match lowerer.lower_expr(&ident) {
+            HirExpr::Ident(name, def_id, ty, _) => {
+                assert_eq!(name, "x");
+                assert_eq!(def_id, DefId(20));
+                assert_eq!(ty, Type::Prim(PrimType::I32));
+            }
+            _ => panic!("expected ident expr"),
+        }
+
+        let call_ident = ast::Expr::Call(
+            Box::new(ast::Expr::Ident("callee".to_string(), callee_span)),
+            vec![ast::Arg {
+                label: None,
+                value: ast::Expr::Literal(ast::Literal::Int(9)),
+                span: sp(204),
+            }],
+        );
+        match lowerer.lower_expr(&call_ident) {
+            HirExpr::Call(_, args, _, ty) => {
+                assert_eq!(args.len(), 1);
+                assert_eq!(ty, Type::Prim(PrimType::I16));
+            }
+            _ => panic!("expected call expr"),
+        }
+
+        let call_non_ident =
+            ast::Expr::Call(Box::new(ast::Expr::Literal(ast::Literal::Int(1))), vec![]);
+        match lowerer.lower_expr(&call_non_ident) {
+            HirExpr::Call(_, _, _, ty) => assert_eq!(ty, Type::Error),
+            _ => panic!("expected call expr"),
+        }
+
+        let member = ast::Expr::Member(
+            Box::new(ast::Expr::Ident("obj".to_string(), ident_span)),
+            "field".to_string(),
+            member_span,
+        );
+        match lowerer.lower_expr(&member) {
+            HirExpr::Call(callee, args, _, ty) => {
+                assert_eq!(args.len(), 1);
+                assert_eq!(ty, Type::Error);
+                match *callee {
+                    HirExpr::Ident(name, def_id, ref field_ty, _) => {
+                        assert_eq!(name, "field");
+                        assert_eq!(def_id, DefId(21));
+                        assert_eq!(*field_ty, Type::Prim(PrimType::Bool));
+                    }
+                    _ => panic!("expected lowered member callee ident"),
+                }
+            }
+            _ => panic!("expected member to lower as call"),
+        }
+
+        let given = ast::Expr::Given {
+            cond: Box::new(ast::Expr::Literal(ast::Literal::Bool(true))),
+            then_block: ast::Block {
+                stmts: vec![],
+                expr: Some(Box::new(ast::Expr::Literal(ast::Literal::Int(1)))),
+                span: sp(205),
+            },
+            else_expr: Some(Box::new(ast::Expr::Literal(ast::Literal::Int(2)))),
+        };
+        assert!(matches!(lowerer.lower_expr(&given), HirExpr::Given { .. }));
+
+        let while_expr = ast::Expr::While {
+            cond: Box::new(ast::Expr::Literal(ast::Literal::Bool(true))),
+            body: ast::Block {
+                stmts: vec![],
+                expr: None,
+                span: sp(206),
+            },
+        };
+        assert!(matches!(
+            lowerer.lower_expr(&while_expr),
+            HirExpr::While { .. }
+        ));
+
+        let ret_expr = ast::Expr::Return(Box::new(ast::Expr::Literal(ast::Literal::Int(0))));
+        assert!(matches!(
+            lowerer.lower_expr(&ret_expr),
+            HirExpr::Return(Some(_))
+        ));
+
+        let zone_expr = ast::Expr::Zone {
+            name: "arena".to_string(),
+            body: ast::Block {
+                stmts: vec![],
+                expr: None,
+                span: sp(207),
+            },
+        };
+        assert!(matches!(
+            lowerer.lower_expr(&zone_expr),
+            HirExpr::Zone { .. }
+        ));
+
+        let struct_lit = ast::Expr::StructLiteral {
+            path: ast_prim("Point"),
+            fields: vec![("x".to_string(), ast::Expr::Literal(ast::Literal::Int(1)))],
+        };
+        assert!(matches!(
+            lowerer.lower_expr(&struct_lit),
+            HirExpr::Literal(ast::Literal::Nil)
+        ));
+
+        let fallback = ast::Expr::Path(vec!["A".to_string()], vec![]);
+        assert!(matches!(
+            lowerer.lower_expr(&fallback),
+            HirExpr::Literal(ast::Literal::Nil)
+        ));
+
+        let binary = ast::Expr::Binary(
+            ast::BinaryOp::Add,
+            Box::new(ast::Expr::Literal(ast::Literal::Int(1))),
+            Box::new(ast::Expr::Literal(ast::Literal::Int(2))),
+        );
+        assert!(matches!(lowerer.lower_expr(&binary), HirExpr::Binary(..)));
+    }
+}
