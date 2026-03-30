@@ -1,6 +1,6 @@
 use izel_lexer::{Lexer, TokenKind};
 use izel_parser::ast;
-use izel_span::SourceId;
+use izel_span::{SourceId, Span};
 use izel_typeck::type_system::{Effect, EffectSet, Lifetime, PrimType, Type};
 use izel_typeck::TypeChecker;
 
@@ -22,6 +22,18 @@ fn parse_module(source: &str) -> ast::Module {
     let cst = parser.parse_source_file();
     let lowerer = izel_ast_lower::Lowerer::new(source);
     lowerer.lower_module(&cst)
+}
+
+fn assert_has_diagnostic(checker: &TypeChecker, needle: &str) {
+    let messages: Vec<String> = checker
+        .diagnostics
+        .iter()
+        .map(|d| d.message.clone())
+        .collect();
+    assert!(
+        messages.iter().any(|m| m.contains(needle)),
+        "expected diagnostic containing '{needle}', got: {messages:?}"
+    );
 }
 
 #[test]
@@ -151,5 +163,250 @@ fn pure_effect_expectation_rejects_io_effect_set() {
     assert!(
         !checker.unify_effects(&actual, &declared_pure),
         "effect unification should reject io where pure is required"
+    );
+}
+
+#[test]
+fn dual_missing_decode_is_reported() {
+    let encode = ast::Forge {
+        name: "encode".to_string(),
+        name_span: Span::dummy(),
+        visibility: ast::Visibility::Open,
+        is_flow: false,
+        generic_params: vec![],
+        params: vec![],
+        ret_type: ast::Type::Prim("i32".to_string()),
+        effects: vec![],
+        attributes: vec![],
+        requires: vec![],
+        ensures: vec![],
+        body: None,
+        span: Span::dummy(),
+    };
+
+    let module = ast::Module {
+        items: vec![ast::Item::Dual(ast::Dual {
+            name: "Codec".to_string(),
+            visibility: ast::Visibility::Open,
+            generic_params: vec![],
+            items: vec![ast::Item::Forge(encode)],
+            attributes: vec![],
+            span: Span::dummy(),
+        })],
+    };
+
+    let mut checker = TypeChecker::with_builtins();
+    checker.check_ast(&module);
+
+    assert_has_diagnostic(
+        &checker,
+        "must define or elaborate both encode and decode forges",
+    );
+}
+
+#[test]
+fn shape_derive_diagnostics_cover_empty_invalid_and_unsupported_targets() {
+    let module = parse_module(
+        r#"
+@derive()
+shape Empty {}
+
+@derive(1)
+shape Invalid {}
+
+@derive(NotReal)
+shape Unsupported {}
+"#,
+    );
+
+    let mut checker = TypeChecker::with_builtins();
+    checker.check_ast(&module);
+
+    assert_has_diagnostic(&checker, "requires at least one derive target");
+    assert_has_diagnostic(&checker, "invalid derive target");
+    assert_has_diagnostic(&checker, "unsupported built-in derive");
+}
+
+#[test]
+fn forge_attribute_macro_diagnostics_cover_invalid_forms() {
+    let module = parse_module(
+        r#"
+@test(1)
+forge bad_test() {}
+
+@bench(1)
+forge bad_bench() {}
+
+@test
+@bench
+forge both() {}
+
+@inline(always, never)
+forge too_many_inline_args() {}
+
+@inline(maybe)
+forge bad_inline_mode() {}
+"#,
+    );
+
+    let mut checker = TypeChecker::with_builtins();
+    checker.check_ast(&module);
+
+    assert_has_diagnostic(&checker, "invalid #[test] usage");
+    assert_has_diagnostic(&checker, "invalid #[bench] usage");
+    assert_has_diagnostic(&checker, "cannot use #[test] and #[bench] together");
+    assert_has_diagnostic(&checker, "invalid #[inline] usage");
+    assert_has_diagnostic(&checker, "invalid #[inline] mode");
+}
+
+#[test]
+fn non_forge_attribute_macro_on_shape_is_rejected() {
+    let module = parse_module(
+        r#"
+@test
+shape InvalidUse {}
+"#,
+    );
+
+    let mut checker = TypeChecker::with_builtins();
+    checker.check_ast(&module);
+
+    assert_has_diagnostic(
+        &checker,
+        "attribute macro #[test] can only be applied to forge declarations",
+    );
+}
+
+#[test]
+fn bridge_validation_reports_abi_and_item_rules() {
+    let module = parse_module(
+        r#"
+bridge "Rust" {
+    forge ext() {}
+    static value: i32 = 1
+    shape NotAllowed {}
+}
+
+bridge {
+    forge missing_abi()
+}
+"#,
+    );
+
+    let mut checker = TypeChecker::with_builtins();
+    checker.check_ast(&module);
+
+    assert_has_diagnostic(&checker, "bridge ABI 'Rust' is not supported");
+    assert_has_diagnostic(&checker, "must be a declaration without a body");
+    assert_has_diagnostic(&checker, "cannot define an initializer");
+    assert_has_diagnostic(
+        &checker,
+        "bridge blocks may only contain forge and static declarations",
+    );
+    assert_has_diagnostic(&checker, "requires an explicit ABI string");
+}
+
+#[test]
+fn asm_validation_reports_non_raw_and_missing_template() {
+    let module = parse_module(
+        r#"
+forge main() {
+    asm!()
+}
+"#,
+    );
+
+    let mut checker = TypeChecker::with_builtins();
+    checker.check_ast(&module);
+
+    assert_has_diagnostic(&checker, "asm! is only allowed inside raw blocks");
+    assert_has_diagnostic(
+        &checker,
+        "asm! requires at least a template string argument",
+    );
+}
+
+#[test]
+fn asm_validation_reports_non_string_template_inside_raw() {
+    let module = parse_module(
+        r#"
+forge main() {
+    raw { asm!(1) }
+}
+"#,
+    );
+
+    let mut checker = TypeChecker::with_builtins();
+    checker.check_ast(&module);
+
+    assert_has_diagnostic(
+        &checker,
+        "asm! first argument must be a string literal template",
+    );
+}
+
+#[test]
+fn echo_validation_reports_non_const_and_non_ident_pattern_cases() {
+    let module = parse_module(
+        r#"
+forge side() -> void !io {}
+
+echo {
+    let x
+    let _ = 1
+    let y = side()
+    side()
+    y
+}
+"#,
+    );
+
+    let mut checker = TypeChecker::with_builtins();
+    checker.check_ast(&module);
+
+    assert_has_diagnostic(&checker, "echo let binding requires an initializer");
+    assert_has_diagnostic(
+        &checker,
+        "echo let bindings currently require identifier patterns",
+    );
+    assert_has_diagnostic(&checker, "echo initializer is not compile-time evaluable");
+    assert_has_diagnostic(&checker, "echo statement is not compile-time evaluable");
+    assert_has_diagnostic(
+        &checker,
+        "echo trailing expression is not compile-time evaluable",
+    );
+}
+
+#[test]
+fn echo_validation_reports_purity_for_effectful_calls() {
+    let mut checker = TypeChecker::with_builtins();
+    checker.define(
+        "log".to_string(),
+        Type::Function {
+            params: vec![],
+            ret: Box::new(Type::Prim(PrimType::Void)),
+            effects: EffectSet::Concrete(vec![Effect::IO]),
+        },
+    );
+
+    let module = ast::Module {
+        items: vec![ast::Item::Echo(ast::Echo {
+            body: ast::Block {
+                stmts: vec![ast::Stmt::Expr(ast::Expr::Call(
+                    Box::new(ast::Expr::Ident("log".to_string(), Span::dummy())),
+                    vec![],
+                ))],
+                expr: None,
+                span: Span::dummy(),
+            },
+            attributes: vec![],
+            span: Span::dummy(),
+        })],
+    };
+
+    checker.check_ast(&module);
+    assert_has_diagnostic(
+        &checker,
+        "echo block must be pure and cannot use runtime effects",
     );
 }
