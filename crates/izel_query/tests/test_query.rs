@@ -23,3 +23,13 @@ fn database_implements_query_context_downcast() {
     let ctx: &dyn QueryContext = &db;
     assert!(ctx.as_any().downcast_ref::<Database>().is_some());
 }
+
+#[test]
+fn database_default_and_missing_key_are_handled() {
+    let mut db = Database::default();
+    assert!(db.get::<u32>("missing").is_none());
+
+    db.set("present".to_string(), 9_u32);
+    let got = db.get::<u32>("present").expect("value should be present");
+    assert_eq!(*got, 9);
+}

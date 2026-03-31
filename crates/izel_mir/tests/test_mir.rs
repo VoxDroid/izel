@@ -1,6 +1,8 @@
 use izel_mir::optim::{Dce, Licm, PipelineFusion};
 use izel_mir::{BasicBlock, ControlFlow};
-use izel_mir::{Constant, Instruction, Local, LocalData, MirBody, Operand, Rvalue, Terminator};
+use izel_mir::{
+    BinOp, Constant, Instruction, Local, LocalData, MirBody, Operand, Rvalue, Terminator, UnOp,
+};
 use izel_typeck::type_system::{PrimType, Type};
 
 #[test]
@@ -156,6 +158,8 @@ fn dce_clears_unreachable_blocks() {
     });
     body.blocks
         .add_edge(entry, reachable, ControlFlow::Unconditional);
+    body.blocks
+        .add_edge(reachable, entry, ControlFlow::Unconditional);
 
     let entry_block = body.blocks.node_weight_mut(entry).unwrap();
     entry_block.instructions.push(Instruction::Assign(
@@ -192,4 +196,56 @@ fn optimization_pass_stubs_are_callable() {
     Licm::run(&mut body);
 
     assert!(body.blocks.node_weight(body.entry).is_some());
+}
+
+#[test]
+fn dce_covers_binary_unary_ref_abort_and_unused_phi_paths() {
+    let mut body = MirBody::new();
+    for idx in 0..5 {
+        body.locals.push(LocalData {
+            name: format!("l{idx}"),
+            ty: Type::Prim(PrimType::I32),
+        });
+    }
+
+    let entry = body.entry;
+    let block = body.blocks.node_weight_mut(entry).unwrap();
+    block.instructions.push(Instruction::Assign(
+        Local(0),
+        Rvalue::Use(Operand::Constant(Constant::Int(1))),
+    ));
+    block.instructions.push(Instruction::Assign(
+        Local(1),
+        Rvalue::Binary(
+            BinOp::Add,
+            Operand::Copy(Local(0)),
+            Operand::Constant(Constant::Int(2)),
+        ),
+    ));
+    block.instructions.push(Instruction::StorageLive(Local(0)));
+    block.instructions.push(Instruction::StorageDead(Local(0)));
+    block.instructions.push(Instruction::Assign(
+        Local(2),
+        Rvalue::Unary(UnOp::Neg, Operand::Copy(Local(1))),
+    ));
+    block
+        .instructions
+        .push(Instruction::Assign(Local(3), Rvalue::Ref(Local(2), false)));
+    block
+        .instructions
+        .push(Instruction::Phi(Local(4), vec![(entry, Local(2))]));
+    block.terminator = Some(Terminator::Abort);
+
+    Dce::run(&mut body);
+
+    let block = body.blocks.node_weight(entry).unwrap();
+    assert!(matches!(block.terminator, Some(Terminator::Abort)));
+    assert!(block
+        .instructions
+        .iter()
+        .any(|instr| matches!(instr, Instruction::StorageLive(Local(0)))));
+    assert!(!block
+        .instructions
+        .iter()
+        .any(|instr| matches!(instr, Instruction::Phi(Local(4), _))));
 }

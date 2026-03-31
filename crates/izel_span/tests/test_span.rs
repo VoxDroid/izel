@@ -2,6 +2,14 @@ use codespan_reporting::files::Files;
 use izel_span::{BytePos, SourceId, SourceMap, Span};
 
 #[test]
+fn span_dummy_has_zero_positions() {
+    let span = Span::dummy();
+    assert_eq!(span.lo, BytePos(0));
+    assert_eq!(span.hi, BytePos(0));
+    assert_eq!(span.source_id, SourceId(0));
+}
+
+#[test]
 fn span_to_combines_bounds_within_same_source() {
     let a = Span::new(BytePos(2), BytePos(4), SourceId(3));
     let b = Span::new(BytePos(10), BytePos(14), SourceId(3));
@@ -22,9 +30,27 @@ fn source_map_add_and_line_queries_work() {
     assert_eq!(file.source, "alpha\nbeta\n");
 
     assert_eq!(<SourceMap as Files>::line_index(&map, id, 0).unwrap(), 0);
+    assert_eq!(<SourceMap as Files>::line_index(&map, id, 5).unwrap(), 0);
     assert_eq!(<SourceMap as Files>::line_index(&map, id, 6).unwrap(), 1);
     assert_eq!(
         <SourceMap as Files>::line_range(&map, id, 1).unwrap(),
         6..11
     );
+
+    assert_eq!(<SourceMap as Files>::name(&map, id).unwrap(), "sample.iz");
+    assert_eq!(
+        <SourceMap as Files>::source(&map, id).unwrap(),
+        "alpha\nbeta\n"
+    );
+
+    assert!(<SourceMap as Files>::name(&map, SourceId(99)).is_err());
+    assert!(<SourceMap as Files>::source(&map, SourceId(99)).is_err());
+    assert!(<SourceMap as Files>::line_index(&map, SourceId(99), 0).is_err());
+    assert!(<SourceMap as Files>::line_range(&map, SourceId(99), 0).is_err());
+
+    let err = <SourceMap as Files>::line_range(&map, id, 99).unwrap_err();
+    assert!(matches!(
+        err,
+        codespan_reporting::files::Error::LineTooLarge { .. }
+    ));
 }

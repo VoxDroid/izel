@@ -365,12 +365,10 @@ mod tests {
         assert!(matches!(hir.items[3], HirItem::Draw(_)));
         assert!(matches!(hir.items[4], HirItem::Echo(_)));
 
-        match &hir.items[2] {
-            HirItem::Ward(ward) => {
-                assert_eq!(ward.items.len(), 1);
-                assert!(matches!(ward.items[0], HirItem::Forge(_)));
-            }
-            _ => panic!("expected ward item"),
+        assert!(matches!(hir.items[2], HirItem::Ward(_)));
+        if let HirItem::Ward(ward) = &hir.items[2] {
+            assert_eq!(ward.items.len(), 1);
+            assert!(matches!(ward.items[0], HirItem::Forge(_)));
         }
     }
 
@@ -455,10 +453,12 @@ mod tests {
         let lowerer = HirLowerer::new(&resolver, &def_types);
         let hir = lowerer.lower_module(&module);
 
-        let forge = match &hir.items[0] {
-            HirItem::Forge(f) => f,
-            _ => panic!("expected forge item"),
-        };
+        assert!(matches!(hir.items[0], HirItem::Forge(_)));
+        let mut forge_opt = None;
+        if let HirItem::Forge(f) = &hir.items[0] {
+            forge_opt = Some(f);
+        }
+        let forge = forge_opt.expect("expected forge item");
 
         assert_eq!(forge.def_id, DefId(10));
         assert_eq!(forge.ret_type, Type::Prim(PrimType::Bool));
@@ -466,9 +466,9 @@ mod tests {
         assert_eq!(forge.params[0].ty, Type::Prim(PrimType::I64));
         assert!(forge.params[0].default_value.is_some());
 
-        match &forge.requires[0] {
-            HirExpr::Call(_, _, _, ty) => assert_eq!(*ty, Type::Prim(PrimType::I32)),
-            _ => panic!("expected lowered call in requires"),
+        assert!(matches!(forge.requires[0], HirExpr::Call(_, _, _, _)));
+        if let HirExpr::Call(_, _, _, ty) = &forge.requires[0] {
+            assert_eq!(*ty, Type::Prim(PrimType::I32));
         }
 
         let HirBlock { stmts, expr, .. } = forge.body.as_ref().expect("forge body");
@@ -511,15 +511,15 @@ mod tests {
             init: Some(ast::Expr::Literal(ast::Literal::Int(1))),
             span: sp(203),
         };
-        match lowerer.lower_stmt(&unsupported_let) {
-            HirStmt::Let {
-                name, def_id, ty, ..
-            } => {
-                assert_eq!(name, "_hir_pattern_unsupported");
-                assert_eq!(def_id, DefId(0));
-                assert_eq!(ty, Type::Error);
-            }
-            _ => panic!("expected let statement"),
+        let lowered_let = lowerer.lower_stmt(&unsupported_let);
+        assert!(matches!(lowered_let, HirStmt::Let { .. }));
+        if let HirStmt::Let {
+            name, def_id, ty, ..
+        } = lowered_let
+        {
+            assert_eq!(name, "_hir_pattern_unsupported");
+            assert_eq!(def_id, DefId(0));
+            assert_eq!(ty, Type::Error);
         }
 
         let expr_stmt = ast::Stmt::Expr(ast::Expr::Unary(
@@ -529,13 +529,12 @@ mod tests {
         assert!(matches!(lowerer.lower_stmt(&expr_stmt), HirStmt::Expr(_)));
 
         let ident = ast::Expr::Ident("x".to_string(), ident_span);
-        match lowerer.lower_expr(&ident) {
-            HirExpr::Ident(name, def_id, ty, _) => {
-                assert_eq!(name, "x");
-                assert_eq!(def_id, DefId(20));
-                assert_eq!(ty, Type::Prim(PrimType::I32));
-            }
-            _ => panic!("expected ident expr"),
+        let lowered_ident = lowerer.lower_expr(&ident);
+        assert!(matches!(lowered_ident, HirExpr::Ident(_, _, _, _)));
+        if let HirExpr::Ident(name, def_id, ty, _) = lowered_ident {
+            assert_eq!(name, "x");
+            assert_eq!(def_id, DefId(20));
+            assert_eq!(ty, Type::Prim(PrimType::I32));
         }
 
         let call_ident = ast::Expr::Call(
@@ -546,19 +545,19 @@ mod tests {
                 span: sp(204),
             }],
         );
-        match lowerer.lower_expr(&call_ident) {
-            HirExpr::Call(_, args, _, ty) => {
-                assert_eq!(args.len(), 1);
-                assert_eq!(ty, Type::Prim(PrimType::I16));
-            }
-            _ => panic!("expected call expr"),
+        let lowered_call_ident = lowerer.lower_expr(&call_ident);
+        assert!(matches!(lowered_call_ident, HirExpr::Call(_, _, _, _)));
+        if let HirExpr::Call(_, args, _, ty) = lowered_call_ident {
+            assert_eq!(args.len(), 1);
+            assert_eq!(ty, Type::Prim(PrimType::I16));
         }
 
         let call_non_ident =
             ast::Expr::Call(Box::new(ast::Expr::Literal(ast::Literal::Int(1))), vec![]);
-        match lowerer.lower_expr(&call_non_ident) {
-            HirExpr::Call(_, _, _, ty) => assert_eq!(ty, Type::Error),
-            _ => panic!("expected call expr"),
+        let lowered_call_non_ident = lowerer.lower_expr(&call_non_ident);
+        assert!(matches!(lowered_call_non_ident, HirExpr::Call(_, _, _, _)));
+        if let HirExpr::Call(_, _, _, ty) = lowered_call_non_ident {
+            assert_eq!(ty, Type::Error);
         }
 
         let member = ast::Expr::Member(
@@ -566,20 +565,17 @@ mod tests {
             "field".to_string(),
             member_span,
         );
-        match lowerer.lower_expr(&member) {
-            HirExpr::Call(callee, args, _, ty) => {
-                assert_eq!(args.len(), 1);
-                assert_eq!(ty, Type::Error);
-                match *callee {
-                    HirExpr::Ident(name, def_id, ref field_ty, _) => {
-                        assert_eq!(name, "field");
-                        assert_eq!(def_id, DefId(21));
-                        assert_eq!(*field_ty, Type::Prim(PrimType::Bool));
-                    }
-                    _ => panic!("expected lowered member callee ident"),
-                }
+        let lowered_member = lowerer.lower_expr(&member);
+        assert!(matches!(lowered_member, HirExpr::Call(_, _, _, _)));
+        if let HirExpr::Call(callee, args, _, ty) = lowered_member {
+            assert_eq!(args.len(), 1);
+            assert_eq!(ty, Type::Error);
+            assert!(matches!(*callee, HirExpr::Ident(_, _, _, _)));
+            if let HirExpr::Ident(name, def_id, ref field_ty, _) = *callee {
+                assert_eq!(name, "field");
+                assert_eq!(def_id, DefId(21));
+                assert_eq!(*field_ty, Type::Prim(PrimType::Bool));
             }
-            _ => panic!("expected member to lower as call"),
         }
 
         let given = ast::Expr::Given {

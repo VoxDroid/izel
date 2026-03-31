@@ -65,3 +65,35 @@ fn resolve_dependencies_skips_path_deps_for_downloads() {
     assert_eq!(resolved.len(), 1);
     assert!(resolved[0].contains("/std/1.0.0"));
 }
+
+#[test]
+fn parse_manifest_reports_parse_error_for_invalid_input() {
+    let invalid = "[package\nname = \"demo\"";
+    let err = parse_manifest(invalid).expect_err("invalid manifest should fail");
+    assert!(err.contains("Failed to parse manifest"));
+}
+
+#[test]
+fn parse_manifest_ignores_unknown_sections_and_preserves_defaults() {
+    let input = r#"
+[package]
+name = "demo"
+version = "0.1.0"
+
+[custom]
+feature = "on"
+"#;
+
+    let manifest = parse_manifest(input).expect("manifest parse should succeed");
+    assert_eq!(manifest.package.name, "demo");
+    assert_eq!(manifest.package.version, "0.1.0");
+    assert_eq!(manifest.registry.index, "https://registry.izel.dev/index");
+}
+
+#[test]
+fn parse_manifest_accepts_whitespace_only_input() {
+    let manifest = parse_manifest("  \n\n   ").expect("whitespace input should parse");
+    assert!(manifest.package.name.is_empty());
+    assert!(manifest.package.version.is_empty());
+    assert!(manifest.dependencies.is_empty());
+}

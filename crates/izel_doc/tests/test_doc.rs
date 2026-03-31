@@ -134,3 +134,27 @@ fn generate_skips_non_forge_shape_items() {
     let docs = generator.generate(&module);
     assert_eq!(docs, "# Module Documentation\n\n");
 }
+
+#[test]
+fn default_generator_starts_empty_and_renders_header() {
+    let mut generator = DocGenerator::default();
+    assert!(generator.output.is_empty());
+
+    let docs = generator.generate(&ast::Module { items: vec![] });
+    assert_eq!(docs, "# Module Documentation\n\n");
+}
+
+#[test]
+fn generate_ignores_doc_attribute_without_string_argument() {
+    let mut generator = DocGenerator::new();
+    let module = ast::Module {
+        items: vec![ast::Item::Forge(forge(
+            "no_doc_text",
+            vec![attr("doc", vec![])],
+        ))],
+    };
+
+    let docs = generator.generate(&module);
+    assert!(docs.contains("## Forge: no_doc_text"));
+    assert!(!docs.contains("None"));
+}

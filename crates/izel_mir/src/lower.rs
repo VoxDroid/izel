@@ -735,4 +735,161 @@ mod tests {
         assert!(found_enter, "MIR should contain ZoneEnter instruction");
         assert!(found_exit, "MIR should contain ZoneExit instruction");
     }
+
+    #[test]
+    fn test_lower_stmt_and_expr_cover_additional_branches() {
+        let mut lowerer = MirLowerer::default();
+        let i32_ty = Type::Prim(PrimType::I32);
+
+        lowerer.lower_stmt(&HirStmt::Assign {
+            def_id: DefId(700),
+            expr: HirExpr::Literal(izel_parser::ast::Literal::Int(5)),
+            span: Span::dummy(),
+        });
+
+        lowerer.lower_stmt(&HirStmt::Expr(HirExpr::Unary(
+            UnaryOp::BitNot,
+            Box::new(HirExpr::Literal(izel_parser::ast::Literal::Int(1))),
+            i32_ty.clone(),
+        )));
+
+        let _ = lowerer.lower_expr(&HirExpr::Literal(izel_parser::ast::Literal::Float(1.5)));
+        let _ = lowerer.lower_expr(&HirExpr::Literal(izel_parser::ast::Literal::Bool(true)));
+        let _ = lowerer.lower_expr(&HirExpr::Literal(izel_parser::ast::Literal::Str(
+            "s".to_string(),
+        )));
+        let _ = lowerer.lower_expr(&HirExpr::Literal(izel_parser::ast::Literal::Nil));
+
+        let binary_ops = vec![
+            BinaryOp::Add,
+            BinaryOp::Sub,
+            BinaryOp::Mul,
+            BinaryOp::Div,
+            BinaryOp::Eq,
+            BinaryOp::Ne,
+            BinaryOp::Lt,
+            BinaryOp::Le,
+            BinaryOp::Ge,
+            BinaryOp::And,
+        ];
+        for op in binary_ops {
+            let _ = lowerer.lower_expr(&HirExpr::Binary(
+                op,
+                Box::new(HirExpr::Literal(izel_parser::ast::Literal::Int(1))),
+                Box::new(HirExpr::Literal(izel_parser::ast::Literal::Int(2))),
+                i32_ty.clone(),
+            ));
+        }
+
+        let _ = lowerer.lower_expr(&HirExpr::Unary(
+            UnaryOp::Neg,
+            Box::new(HirExpr::Literal(izel_parser::ast::Literal::Int(2))),
+            i32_ty.clone(),
+        ));
+        let _ = lowerer.lower_expr(&HirExpr::Unary(
+            UnaryOp::Not,
+            Box::new(HirExpr::Literal(izel_parser::ast::Literal::Bool(false))),
+            Type::Prim(PrimType::Bool),
+        ));
+
+        lowerer.check_contracts = true;
+        let void_call = HirExpr::Call(
+            Box::new(HirExpr::Literal(izel_parser::ast::Literal::Int(0))),
+            vec![HirExpr::Literal(izel_parser::ast::Literal::Int(3))],
+            vec![HirExpr::Literal(izel_parser::ast::Literal::Bool(true))],
+            Type::Prim(PrimType::Void),
+        );
+        let _ = lowerer.lower_expr(&void_call);
+
+        let ret_none = HirExpr::Return(None);
+        let _ = lowerer.lower_expr(&ret_none);
+
+        lowerer.body.blocks[lowerer.current_block].terminator = None;
+        let given_expr = HirExpr::Given {
+            cond: Box::new(HirExpr::Literal(izel_parser::ast::Literal::Bool(true))),
+            then_block: HirBlock {
+                stmts: vec![HirStmt::Expr(HirExpr::Literal(
+                    izel_parser::ast::Literal::Int(1),
+                ))],
+                expr: Some(Box::new(HirExpr::Literal(izel_parser::ast::Literal::Int(
+                    2,
+                )))),
+                span: Span::dummy(),
+            },
+            else_expr: Some(Box::new(HirExpr::Literal(izel_parser::ast::Literal::Int(
+                3,
+            )))),
+            ty: i32_ty.clone(),
+        };
+        let _ = lowerer.lower_expr(&given_expr);
+
+        let while_expr = HirExpr::While {
+            cond: Box::new(HirExpr::Literal(izel_parser::ast::Literal::Bool(true))),
+            body: HirBlock {
+                stmts: vec![],
+                expr: None,
+                span: Span::dummy(),
+            },
+        };
+        let _ = lowerer.lower_expr(&while_expr);
+
+        let mut found_void_call = false;
+        for node in lowerer.body.blocks.node_indices() {
+            for inst in &lowerer.body.blocks[node].instructions {
+                if let Instruction::Call(None, callee, _) = inst {
+                    if callee == "unknown" {
+                        found_void_call = true;
+                    }
+                }
+            }
+        }
+        assert!(
+            found_void_call,
+            "void calls with non-ident callee should be lowered"
+        );
+    }
+
+    #[test]
+    fn test_substitute_result_expr_covers_unary_and_call_paths() {
+        let lowerer = MirLowerer::new();
+        let i32_ty = Type::Prim(PrimType::I32);
+
+        let source = HirExpr::Call(
+            Box::new(HirExpr::Unary(
+                UnaryOp::Neg,
+                Box::new(HirExpr::Ident(
+                    "result".to_string(),
+                    DefId(1),
+                    i32_ty.clone(),
+                    Span::dummy(),
+                )),
+                i32_ty.clone(),
+            )),
+            vec![HirExpr::Ident(
+                "result".to_string(),
+                DefId(2),
+                i32_ty.clone(),
+                Span::dummy(),
+            )],
+            vec![HirExpr::Ident(
+                "result".to_string(),
+                DefId(3),
+                i32_ty.clone(),
+                Span::dummy(),
+            )],
+            i32_ty.clone(),
+        );
+
+        let substituted = lowerer.substitute_result_expr(
+            &source,
+            &HirExpr::Literal(izel_parser::ast::Literal::Int(9)),
+        );
+
+        assert!(matches!(substituted, HirExpr::Call(_, _, _, _)));
+        if let HirExpr::Call(callee, args, requires, _) = substituted {
+            assert!(matches!(*callee, HirExpr::Unary(_, _, _)));
+            assert_eq!(args.len(), 1);
+            assert_eq!(requires.len(), 1);
+        }
+    }
 }

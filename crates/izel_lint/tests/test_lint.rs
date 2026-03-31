@@ -33,3 +33,16 @@ fn noop_lint_reports_no_diagnostics() {
     let diagnostics = manager.run(&7);
     assert!(diagnostics.is_empty());
 }
+
+#[test]
+fn lint_defaults_and_noop_name_are_covered() {
+    let mut context = LintContext::default();
+    assert!(context.diagnostics.is_empty());
+    context.report(warning("x"));
+    assert_eq!(context.diagnostics.len(), 1);
+
+    let mut manager = LintManager::<i32>::default();
+    manager.add(NoOpLint);
+    assert_eq!(<NoOpLint as Lint<i32>>::name(&NoOpLint), "no_op");
+    assert!(manager.run(&0).is_empty());
+}

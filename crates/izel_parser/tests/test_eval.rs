@@ -217,3 +217,213 @@ fn eval_given_and_block_error_paths_return_unknown_or_nil() {
     assert_eq!(eval_expr(&given_false_without_else, &ctx), ConstValue::Nil);
     assert_eq!(eval_expr(&given_non_bool, &ctx), ConstValue::Unknown);
 }
+
+#[test]
+fn eval_additional_branch_and_block_paths() {
+    let ctx = HashMap::new();
+
+    let given_false_with_else = Expr::Given {
+        cond: Box::new(bool_lit(false)),
+        then_block: Block {
+            stmts: vec![],
+            expr: Some(Box::new(int(1))),
+            span: Span::dummy(),
+        },
+        else_expr: Some(Box::new(int(9))),
+    };
+    assert_eq!(eval_expr(&given_false_with_else, &ctx), ConstValue::Int(9));
+
+    let float_cases = vec![
+        (
+            Expr::Binary(BinaryOp::Sub, Box::new(float(4.0)), Box::new(float(1.5))),
+            ConstValue::Float(2.5),
+        ),
+        (
+            Expr::Binary(BinaryOp::Mul, Box::new(float(3.0)), Box::new(float(2.0))),
+            ConstValue::Float(6.0),
+        ),
+        (
+            Expr::Binary(BinaryOp::Div, Box::new(float(8.0)), Box::new(float(2.0))),
+            ConstValue::Float(4.0),
+        ),
+        (
+            Expr::Binary(BinaryOp::Eq, Box::new(float(1.0)), Box::new(float(1.0))),
+            ConstValue::Bool(true),
+        ),
+        (
+            Expr::Binary(BinaryOp::Ne, Box::new(float(1.0)), Box::new(float(2.0))),
+            ConstValue::Bool(true),
+        ),
+        (
+            Expr::Binary(BinaryOp::Lt, Box::new(float(1.0)), Box::new(float(2.0))),
+            ConstValue::Bool(true),
+        ),
+        (
+            Expr::Binary(BinaryOp::Gt, Box::new(float(2.0)), Box::new(float(1.0))),
+            ConstValue::Bool(true),
+        ),
+        (
+            Expr::Binary(BinaryOp::Le, Box::new(float(2.0)), Box::new(float(2.0))),
+            ConstValue::Bool(true),
+        ),
+    ];
+    for (expr, expected) in float_cases {
+        assert_eq!(eval_expr(&expr, &ctx), expected);
+    }
+    assert_eq!(
+        eval_expr(
+            &Expr::Binary(BinaryOp::And, Box::new(int(1)), Box::new(int(2))),
+            &ctx
+        ),
+        ConstValue::Unknown
+    );
+    assert_eq!(
+        eval_expr(
+            &Expr::Binary(BinaryOp::Div, Box::new(float(1.0)), Box::new(float(0.0))),
+            &ctx
+        ),
+        ConstValue::Unknown
+    );
+    assert_eq!(
+        eval_expr(
+            &Expr::Binary(BinaryOp::Rem, Box::new(float(1.0)), Box::new(float(1.0))),
+            &ctx
+        ),
+        ConstValue::Unknown
+    );
+
+    assert_eq!(
+        eval_expr(
+            &Expr::Binary(
+                BinaryOp::And,
+                Box::new(bool_lit(true)),
+                Box::new(bool_lit(false))
+            ),
+            &ctx
+        ),
+        ConstValue::Bool(false)
+    );
+    assert_eq!(
+        eval_expr(
+            &Expr::Binary(
+                BinaryOp::Eq,
+                Box::new(bool_lit(true)),
+                Box::new(bool_lit(true))
+            ),
+            &ctx
+        ),
+        ConstValue::Bool(true)
+    );
+    assert_eq!(
+        eval_expr(
+            &Expr::Binary(
+                BinaryOp::Ne,
+                Box::new(bool_lit(true)),
+                Box::new(bool_lit(false))
+            ),
+            &ctx
+        ),
+        ConstValue::Bool(true)
+    );
+    assert_eq!(
+        eval_expr(
+            &Expr::Binary(
+                BinaryOp::Add,
+                Box::new(bool_lit(true)),
+                Box::new(bool_lit(false))
+            ),
+            &ctx
+        ),
+        ConstValue::Unknown
+    );
+
+    let s1 = Expr::Literal(Literal::Str("a".to_string()));
+    let s2 = Expr::Literal(Literal::Str("b".to_string()));
+    assert_eq!(
+        eval_expr(
+            &Expr::Binary(BinaryOp::Eq, Box::new(s1.clone()), Box::new(s1)),
+            &ctx
+        ),
+        ConstValue::Bool(true)
+    );
+    assert_eq!(
+        eval_expr(
+            &Expr::Binary(BinaryOp::Ne, Box::new(s2.clone()), Box::new(s2)),
+            &ctx
+        ),
+        ConstValue::Bool(false)
+    );
+    assert_eq!(
+        eval_expr(
+            &Expr::Binary(
+                BinaryOp::Or,
+                Box::new(Expr::Literal(Literal::Str("x".to_string()))),
+                Box::new(Expr::Literal(Literal::Str("y".to_string())))
+            ),
+            &ctx
+        ),
+        ConstValue::Unknown
+    );
+
+    let nil = Expr::Literal(Literal::Nil);
+    assert_eq!(
+        eval_expr(
+            &Expr::Binary(BinaryOp::Ne, Box::new(nil.clone()), Box::new(nil)),
+            &ctx
+        ),
+        ConstValue::Bool(false)
+    );
+    assert_eq!(
+        eval_expr(
+            &Expr::Binary(
+                BinaryOp::Add,
+                Box::new(Expr::Literal(Literal::Nil)),
+                Box::new(Expr::Literal(Literal::Nil))
+            ),
+            &ctx
+        ),
+        ConstValue::Unknown
+    );
+
+    assert_eq!(
+        eval_expr(&Expr::Unary(UnaryOp::Not, Box::new(int(1))), &ctx),
+        ConstValue::Unknown
+    );
+    assert_eq!(
+        eval_expr(&Expr::Unary(UnaryOp::Not, Box::new(float(1.0))), &ctx),
+        ConstValue::Unknown
+    );
+    assert_eq!(
+        eval_expr(&Expr::Unary(UnaryOp::Neg, Box::new(bool_lit(true))), &ctx),
+        ConstValue::Unknown
+    );
+    assert_eq!(
+        eval_expr(
+            &Expr::Unary(
+                UnaryOp::Neg,
+                Box::new(Expr::Literal(Literal::Str("nope".to_string())))
+            ),
+            &ctx
+        ),
+        ConstValue::Unknown
+    );
+
+    let block_nil = Expr::Block(Block {
+        stmts: vec![Stmt::Expr(int(1))],
+        expr: None,
+        span: Span::dummy(),
+    });
+    assert_eq!(eval_expr(&block_nil, &ctx), ConstValue::Nil);
+
+    let unknown_init = Expr::Block(Block {
+        stmts: vec![Stmt::Let {
+            pat: Pattern::Ident("x".to_string(), false, Span::dummy()),
+            ty: None,
+            init: Some(Expr::Ident("missing".to_string(), Span::dummy())),
+            span: Span::dummy(),
+        }],
+        expr: Some(Box::new(int(1))),
+        span: Span::dummy(),
+    });
+    assert_eq!(eval_expr(&unknown_init, &ctx), ConstValue::Unknown);
+}
