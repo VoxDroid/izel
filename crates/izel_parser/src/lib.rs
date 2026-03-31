@@ -1342,6 +1342,72 @@ mod tests {
         parser.parse_decl()
     }
 
+    fn parse_source_test(src: &str) -> SyntaxNode {
+        let mut lexer = Lexer::new(src, izel_span::SourceId(0));
+        let mut tokens = Vec::new();
+        loop {
+            let t = lexer.next_token();
+            let kind = t.kind;
+            tokens.push(t);
+            if kind == TokenKind::Eof {
+                break;
+            }
+        }
+        let mut parser = Parser::new(tokens, src.to_string());
+        parser.parse_source_file()
+    }
+
+    fn parse_pattern_test(src: &str) -> SyntaxNode {
+        let mut lexer = Lexer::new(src, izel_span::SourceId(0));
+        let mut tokens = Vec::new();
+        loop {
+            let t = lexer.next_token();
+            let kind = t.kind;
+            tokens.push(t);
+            if kind == TokenKind::Eof {
+                break;
+            }
+        }
+        let mut parser = Parser::new(tokens, src.to_string());
+        parser.parse_pattern()
+    }
+
+    fn parse_type_test(src: &str) -> SyntaxNode {
+        let mut lexer = Lexer::new(src, izel_span::SourceId(0));
+        let mut tokens = Vec::new();
+        loop {
+            let t = lexer.next_token();
+            let kind = t.kind;
+            tokens.push(t);
+            if kind == TokenKind::Eof {
+                break;
+            }
+        }
+        let mut parser = Parser::new(tokens, src.to_string());
+        parser.parse_type()
+    }
+
+    fn contains_kind(node: &SyntaxNode, needle: NodeKind) -> bool {
+        if node.kind == needle {
+            return true;
+        }
+
+        node.children.iter().any(|child| match child {
+            SyntaxElement::Node(n) => contains_kind(n, needle),
+            SyntaxElement::Token(_) => false,
+        })
+    }
+
+    fn count_kind(node: &SyntaxNode, needle: NodeKind) -> usize {
+        let mut total = usize::from(node.kind == needle);
+        for child in &node.children {
+            if let SyntaxElement::Node(n) = child {
+                total += count_kind(n, needle);
+            }
+        }
+        total
+    }
+
     #[test]
     fn test_parse_dual_decl() {
         let node = parse_test("dual shape JsonFormat<T> { forge encode(&self, val: &T) }");
@@ -1381,5 +1447,80 @@ mod tests {
                 .any(|c| matches!(c, SyntaxElement::Node(n) if n.kind == NodeKind::Block)),
             "macro declaration should contain a body block"
         );
+    }
+
+    #[test]
+    fn test_parse_decl_with_pkg_modifier_generic_effects_and_block() {
+        let node =
+            parse_test("pkg(core::io) forge run<T: Trait>(~self, ..args: i32 = 1) { give 0 }");
+        assert_eq!(node.kind, NodeKind::ForgeDecl);
+        assert!(contains_kind(&node, NodeKind::GenericParams));
+        assert!(contains_kind(&node, NodeKind::ParamPart));
+        assert!(contains_kind(&node, NodeKind::Block));
+    }
+
+    #[test]
+    fn test_parse_pattern_forms_cover_core_branches() {
+        for src in [
+            "~name",
+            "(left, right)",
+            "[head, ..tail]",
+            "Point::Wrap { x, y }",
+            "Some(value)",
+            "1 | 2",
+            "nil",
+        ] {
+            let node = parse_pattern_test(src);
+            assert_eq!(node.kind, NodeKind::Pattern);
+        }
+    }
+
+    #[test]
+    fn test_parse_type_forms_cover_pointer_optional_raw_and_generic_args() {
+        assert_eq!(parse_type_test("*~i32").kind, NodeKind::PointerType);
+        assert_eq!(parse_type_test("?i32").kind, NodeKind::OptionalType);
+        assert_eq!(parse_type_test("raw { give 1 }").kind, NodeKind::RawExpr);
+
+        let generic = parse_type_test("Result<i32, str>");
+        assert!(contains_kind(&generic, NodeKind::GenericArgs));
+    }
+
+    #[test]
+    fn test_parse_source_covers_shape_impl_weave_dual_ward_draw_and_bind() {
+        let root = parse_source_test(
+            r#"
+shape impl Widget { forge draw(self) { give } }
+dual Codec { forge encode(self) { give } }
+weave Renderable: Debug + Display { forge render(self) { give } }
+weave Renderable for Widget { forge render(self) { give } }
+ward Core { forge helper() { let f = bind |x, y| x + y; give 0 } }
+draw std/io::*;
+"#,
+        );
+
+        assert_eq!(root.kind, NodeKind::SourceFile);
+        assert!(contains_kind(&root, NodeKind::ImplBlock));
+        assert!(contains_kind(&root, NodeKind::DualDecl));
+        assert!(contains_kind(&root, NodeKind::WeaveDecl));
+        assert!(contains_kind(&root, NodeKind::WardDecl));
+        assert!(contains_kind(&root, NodeKind::DrawDecl));
+        assert!(contains_kind(&root, NodeKind::BindExpr));
+    }
+
+    #[test]
+    fn test_parse_decl_accepts_stacked_at_and_bracket_attributes() {
+        let node = parse_test("@intrinsic(\"x\", 1) #[bench] forge f() { give }");
+        assert_eq!(node.kind, NodeKind::ForgeDecl);
+        assert!(contains_kind(&node, NodeKind::Attributes));
+        assert!(count_kind(&node, NodeKind::Attribute) >= 2);
+    }
+
+    #[test]
+    fn test_bump_returns_synthetic_eof_when_token_stream_is_empty() {
+        let mut parser = Parser::new(vec![], String::new());
+        let token = parser.bump();
+
+        assert_eq!(token.kind, TokenKind::Eof);
+        assert_eq!(parser.pos, 0);
     }
 }

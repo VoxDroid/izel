@@ -104,6 +104,9 @@ fn main() {
 mod tests {
     use super::{create_project, parse_command, usage, Command};
     use std::fs;
+    use std::io;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -233,6 +236,57 @@ mod tests {
         assert!(manifest_after.contains("name=\"keep\""));
         assert!(main_after.contains("forge main()"));
 
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn create_project_surfaces_manifest_write_error_for_read_only_root() {
+        let root = temp_project_root("manifest-write-error");
+        let src = root.join("src");
+        fs::create_dir_all(&src).expect("create source directory");
+
+        let mut root_perms = fs::metadata(&root)
+            .expect("read root metadata")
+            .permissions();
+        root_perms.set_mode(0o555);
+        fs::set_permissions(&root, root_perms).expect("set root read-only");
+
+        let root_str = root.to_string_lossy().to_string();
+        let err = create_project(&root_str).expect_err("manifest write should fail");
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+
+        let mut writable = fs::metadata(&root)
+            .expect("read root metadata")
+            .permissions();
+        writable.set_mode(0o755);
+        fs::set_permissions(&root, writable).expect("restore root permissions");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn create_project_surfaces_main_write_error_for_read_only_src() {
+        let root = temp_project_root("main-write-error");
+        let src = root.join("src");
+        fs::create_dir_all(&src).expect("create src directory");
+        fs::write(
+            root.join("Izel.toml"),
+            "[package]\nname = \"keep\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("write existing manifest");
+
+        let mut src_perms = fs::metadata(&src).expect("read src metadata").permissions();
+        src_perms.set_mode(0o555);
+        fs::set_permissions(&src, src_perms).expect("set src read-only");
+
+        let root_str = root.to_string_lossy().to_string();
+        let err = create_project(&root_str).expect_err("main write should fail");
+        assert_eq!(err.kind(), io::ErrorKind::PermissionDenied);
+
+        let mut writable = fs::metadata(&src).expect("read src metadata").permissions();
+        writable.set_mode(0o755);
+        fs::set_permissions(&src, writable).expect("restore src permissions");
         let _ = fs::remove_dir_all(&root);
     }
 }

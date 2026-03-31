@@ -193,3 +193,20 @@ fn print_cst(element: &izel_parser::cst::SyntaxElement, indent: usize) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::print_cst;
+    use izel_lexer::{Token, TokenKind};
+    use izel_parser::cst::{NodeKind, SyntaxElement, SyntaxNode};
+    use izel_span::Span;
+
+    #[test]
+    fn print_cst_handles_node_and_token_variants() {
+        let leaf = SyntaxElement::Token(Token::new(TokenKind::Ident, Span::dummy()));
+        let node = SyntaxElement::Node(SyntaxNode::new(NodeKind::Ident, vec![leaf.clone()]));
+
+        print_cst(&node, 0);
+        print_cst(&leaf, 1);
+    }
+}

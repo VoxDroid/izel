@@ -251,3 +251,67 @@ impl<'a> Formatter<'a> {
         self.last_token = Some(token.kind);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Formatter;
+    use izel_lexer::{Token, TokenKind};
+    use izel_parser::cst::{NodeKind, SyntaxElement, SyntaxNode};
+    use izel_span::{BytePos, SourceId, Span};
+
+    fn token(kind: TokenKind, lo: u32, hi: u32) -> Token {
+        Token::new(kind, Span::new(BytePos(lo), BytePos(hi), SourceId(0)))
+    }
+
+    #[test]
+    fn formatter_helpers_update_newline_tracking() {
+        let mut formatter = Formatter::new("line");
+
+        formatter.push_str("line\n");
+        assert!(formatter.needs_indent);
+
+        formatter.push_str("next");
+        formatter.push_blank_line();
+        assert!(formatter.output.ends_with("\n\n"));
+        assert!(formatter.needs_indent);
+
+        let before = formatter.output.clone();
+        formatter.push_blank_line();
+        assert_eq!(formatter.output, before);
+    }
+
+    #[test]
+    fn formatter_handles_comment_tokens_as_full_lines() {
+        let mut formatter = Formatter::new("//x");
+        formatter.format_element(&SyntaxElement::Token(token(TokenKind::Comment, 0, 3)));
+
+        assert_eq!(formatter.output, "//x\n");
+    }
+
+    #[test]
+    fn formatter_block_tokens_cover_comma_and_semicolon_paths() {
+        let node = SyntaxNode::new(
+            NodeKind::Block,
+            vec![
+                SyntaxElement::Token(token(TokenKind::OpenBrace, 0, 1)),
+                SyntaxElement::Token(token(TokenKind::Comma, 1, 2)),
+                SyntaxElement::Token(token(TokenKind::Semicolon, 2, 3)),
+                SyntaxElement::Token(token(TokenKind::CloseBrace, 3, 4)),
+            ],
+        );
+        let mut formatter = Formatter::new("{,;}");
+
+        formatter.format_node(&node);
+
+        assert!(formatter.output.contains(", \n") || formatter.output.contains(",\n"));
+        assert!(formatter.output.contains(";\n"));
+    }
+
+    #[test]
+    fn formatter_ignores_eof_token() {
+        let mut formatter = Formatter::new("");
+        formatter.format_token(&token(TokenKind::Eof, 0, 0));
+
+        assert!(formatter.output.is_empty());
+    }
+}

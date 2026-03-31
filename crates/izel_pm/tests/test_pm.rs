@@ -1,4 +1,7 @@
-use izel_pm::{build_download_url, parse_manifest, resolve_dependencies_with_registry, Dependency};
+use izel_pm::{
+    build_download_url, parse_manifest, resolve_dependencies, resolve_dependencies_with_registry,
+    Dependency,
+};
 use std::collections::HashMap;
 
 #[test]
@@ -44,6 +47,14 @@ fn resolve_dependencies_collects_registry_downloads() {
         resolved.iter().any(|url| url.contains("/std/1.0.0")),
         "expected std version dependency to resolve from registry"
     );
+}
+
+#[test]
+fn resolve_dependencies_wrapper_uses_default_registry() {
+    let mut deps = HashMap::new();
+    deps.insert("std".to_string(), Dependency::Version("1.0.0".to_string()));
+
+    resolve_dependencies(&deps).expect("default-registry resolution should succeed");
 }
 
 #[test]
