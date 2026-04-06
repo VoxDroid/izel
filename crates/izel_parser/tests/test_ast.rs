@@ -333,6 +333,15 @@ fn literal_hash_and_equality_cover_all_variant_paths() {
     let mut nil_hash = DefaultHasher::new();
     ast::Literal::Nil.hash(&mut nil_hash);
 
+    assert_eq!(
+        ast::Literal::Str("same".to_string()),
+        ast::Literal::Str("same".to_string())
+    );
+    assert_ne!(
+        ast::Literal::Str("same".to_string()),
+        ast::Literal::Str("different".to_string())
+    );
+
     assert_ne!(
         ast::Literal::Str("same".to_string()),
         ast::Literal::Bool(true)

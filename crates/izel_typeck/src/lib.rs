@@ -3166,15 +3166,15 @@ mod tests {
         let mut items = lowerer.lower_item(&cst);
         let item = items.pop().unwrap();
 
-        assert!(matches!(item, ast::Item::Forge(_)));
-        if let ast::Item::Forge(f) = item {
-            assert!(f.attributes.iter().any(|a| a.name == "proof"));
-            assert!(
-                matches!(f.ret_type, ast::Type::Witness(_)),
-                "Expected Witness return type, got {:?}",
-                f.ret_type
-            );
-        }
+        assert!(matches!(
+            item,
+            ast::Item::Forge(ast::Forge {
+                ref attributes,
+                ref ret_type,
+                ..
+            }) if attributes.iter().any(|a| a.name == "proof")
+                && matches!(ret_type, ast::Type::Witness(_))
+        ));
     }
 
     #[test]
@@ -3642,30 +3642,35 @@ mod tests {
         let mut items = lowerer.lower_item(&cst);
         let item = items.pop().unwrap();
 
-        assert!(matches!(item, ast::Item::Forge(_)));
-        if let ast::Item::Forge(f) = item {
-            assert_eq!(f.name, "divide");
-            assert_eq!(f.params.len(), 2);
+        let into_forge = |item: ast::Item| match item {
+            ast::Item::Forge(f) => f,
+            other => panic!("expected forge item, got {other:?}"),
+        };
 
-            // First param should be i32
-            assert!(matches!(f.params[0].ty, ast::Type::Prim(ref s) if s == "i32"));
+        let f = into_forge(item);
+        assert!(std::panic::catch_unwind(|| {
+            let _ = into_forge(ast::Item::Draw(ast::Draw {
+                path: vec![],
+                is_wildcard: false,
+                span: Span::dummy(),
+            }));
+        })
+        .is_err());
+        assert_eq!(f.name, "divide");
+        assert_eq!(f.params.len(), 2);
 
-            // Second param: the AST layer keeps it as a Path("NonZero", [i32])
-            // The typeck layer resolves NonZero<i32> to BuiltinWitness
-            let mut tc = TypeChecker::new();
-            let lowered = tc.lower_ast_type(&f.params[1].ty);
-            assert!(matches!(
-                lowered,
-                Type::BuiltinWitness(BuiltinWitness::NonZero, _)
-            ));
-            if let Type::BuiltinWitness(BuiltinWitness::NonZero, inner) = lowered {
-                assert_eq!(
-                    *inner,
-                    Type::Prim(PrimType::I32),
-                    "Inner type should be i32"
-                );
-            }
-        }
+        // First param should be i32
+        assert!(matches!(f.params[0].ty, ast::Type::Prim(ref s) if s == "i32"));
+
+        // Second param: the AST layer keeps it as a Path("NonZero", [i32])
+        // The typeck layer resolves NonZero<i32> to BuiltinWitness
+        let mut tc = TypeChecker::new();
+        let lowered = tc.lower_ast_type(&f.params[1].ty);
+        assert!(matches!(
+            lowered,
+            Type::BuiltinWitness(BuiltinWitness::NonZero, ref inner)
+                if **inner == Type::Prim(PrimType::I32)
+        ));
     }
 
     // ========== Temporal Constraints Tests ==========
@@ -3746,18 +3751,30 @@ mod tests {
         let item = items.pop();
 
         assert!(matches!(item, Some(ast::Item::Shape(_))));
-        if let Some(ast::Item::Shape(s)) = item {
-            assert_eq!(s.name, "Rect");
-            assert!(
-                !s.invariants.is_empty(),
-                "Shape should have invariants extracted from @invariant"
-            );
-            // The invariant attribute should not appear in regular attributes
-            assert!(
-                s.attributes.iter().all(|a| a.name != "invariant"),
-                "invariant should be extracted from attributes"
-            );
-        }
+        let into_shape = |item: Option<ast::Item>| match item {
+            Some(ast::Item::Shape(s)) => s,
+            other => panic!("expected shape item, got {other:?}"),
+        };
+
+        let s = into_shape(item);
+        assert!(std::panic::catch_unwind(|| {
+            let _ = into_shape(Some(ast::Item::Draw(ast::Draw {
+                path: vec![],
+                is_wildcard: false,
+                span: Span::dummy(),
+            })));
+        })
+        .is_err());
+        assert_eq!(s.name, "Rect");
+        assert!(
+            !s.invariants.is_empty(),
+            "Shape should have invariants extracted from @invariant"
+        );
+        // The invariant attribute should not appear in regular attributes
+        assert!(
+            s.attributes.iter().all(|a| a.name != "invariant"),
+            "invariant should be extracted from attributes"
+        );
     }
 
     #[test]
@@ -4124,10 +4141,10 @@ mod tests {
             .select_function_overload("id", &[Type::Prim(PrimType::I32)], izel_span::Span::dummy())
             .expect("expected an overload to be selected");
 
-        assert!(matches!(selected.1, Type::Function { .. }));
-        if let Type::Function { ret, .. } = selected.1 {
-            assert_eq!(*ret, Type::Prim(PrimType::I32));
-        }
+        assert!(matches!(
+            selected.1,
+            Type::Function { ref ret, .. } if **ret == Type::Prim(PrimType::I32)
+        ));
     }
 
     #[test]
@@ -4664,10 +4681,10 @@ mod tests {
         let tail = tc.new_effect_var();
         let row = EffectSet::Row(vec![Effect::IO, Effect::Net], Box::new(tail.clone()));
         let masked_row = tc.apply_effect_boundary(&row, &[Effect::IO]);
-        assert!(matches!(masked_row, EffectSet::Row(_, _)));
-        if let EffectSet::Row(vals, _) = masked_row {
-            assert_eq!(vals, vec![Effect::Net]);
-        }
+        assert!(matches!(
+            masked_row,
+            EffectSet::Row(ref vals, _) if vals == &vec![Effect::Net]
+        ));
 
         let free_var = tc.new_effect_var();
         let masked_var = tc.apply_effect_boundary(&free_var, &[Effect::IO]);
@@ -5097,10 +5114,10 @@ mod tests {
             ret: Box::new(ast::Type::Prim("i32".to_string())),
             effects: vec!["io".to_string()],
         });
-        assert!(matches!(lowered_fn, Type::Function { .. }));
-        if let Type::Function { effects, .. } = lowered_fn {
-            assert_eq!(effects, EffectSet::Concrete(vec![]));
-        }
+        assert!(matches!(
+            lowered_fn,
+            Type::Function { ref effects, .. } if effects == &EffectSet::Concrete(vec![])
+        ));
 
         let static_a = Type::Static(vec![("x".to_string(), Type::Prim(PrimType::I32))]);
         let static_b = Type::Static(vec![("x".to_string(), Type::Prim(PrimType::I32))]);
@@ -5758,10 +5775,10 @@ mod tests {
             body: Box::new(ast::Expr::Ident("a".to_string(), Span::dummy())),
         };
         let bind_ty = tc.infer_expr(&bind_expr);
-        assert!(matches!(bind_ty, Type::Function { .. }));
-        if let Type::Function { params, .. } = bind_ty {
-            assert_eq!(params.len(), 2);
-        }
+        assert!(matches!(
+            bind_ty,
+            Type::Function { ref params, .. } if params.len() == 2
+        ));
 
         let seek_expr = ast::Expr::Seek {
             body: ast::Block {
@@ -6363,23 +6380,28 @@ mod tests {
             &name_mapping,
         );
 
-        assert!(matches!(substituted, Type::Function { .. }));
-        if let Type::Function {
-            params,
-            ret,
-            effects,
-        } = substituted
-        {
-            assert!(matches!(params[0], Type::Prim(PrimType::I32)));
-            assert!(matches!(*ret, Type::Prim(PrimType::I32)));
-            assert_eq!(
+        let into_function = |ty: Type| match ty {
+            Type::Function {
+                params,
+                ret,
                 effects,
-                EffectSet::Row(
-                    vec![Effect::IO],
-                    Box::new(EffectSet::Concrete(vec![Effect::Pure]))
-                )
-            );
-        }
+            } => (params, ret, effects),
+            other => panic!("expected substituted function type, got {other:?}"),
+        };
+        let (params, ret, effects) = into_function(substituted);
+        assert!(std::panic::catch_unwind(|| {
+            let _ = into_function(Type::Prim(PrimType::I32));
+        })
+        .is_err());
+        assert!(matches!(params[0], Type::Prim(PrimType::I32)));
+        assert!(matches!(*ret, Type::Prim(PrimType::I32)));
+        assert_eq!(
+            effects,
+            EffectSet::Row(
+                vec![Effect::IO],
+                Box::new(EffectSet::Concrete(vec![Effect::Pure]))
+            )
+        );
 
         let mut params_one = vec![Type::Pointer(
             Box::new(Type::Prim(PrimType::I32)),
@@ -6495,11 +6517,9 @@ mod tests {
         );
         assert!(matches!(
             substituted_pred,
-            Type::Predicate(ast::Expr::Binary(_, _, _))
+            Type::Predicate(ast::Expr::Binary(_, ref lhs, _))
+                if matches!(lhs.as_ref(), ast::Expr::Literal(ast::Literal::Int(5)))
         ));
-        if let Type::Predicate(ast::Expr::Binary(_, lhs, _)) = substituted_pred {
-            assert!(matches!(*lhs, ast::Expr::Literal(ast::Literal::Int(5))));
-        }
 
         let substituted_ident = tc.substitute_expr(
             &ast::Expr::Ident("x".to_string(), Span::dummy()),

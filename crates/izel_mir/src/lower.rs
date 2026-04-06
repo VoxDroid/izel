@@ -497,11 +497,6 @@ mod tests {
                 has_back_edge = true;
             }
         }
-        if !has_back_edge {
-            for node in mir.blocks.node_indices() {
-                println!("Block {:?}: {:?}", node, mir.blocks[node].terminator);
-            }
-        }
         assert!(
             has_back_edge,
             "TCO should have created a back-edge to the header block"
@@ -585,14 +580,11 @@ mod tests {
         lowerer.lower_expr(&call_expr);
 
         let mir = &lowerer.body;
-        let mut found_assert = false;
-        for node in mir.blocks.node_indices() {
-            for inst in &mir.blocks[node].instructions {
-                if let Instruction::Assert(_, _) = inst {
-                    found_assert = true;
-                }
-            }
-        }
+        let found_assert = mir
+            .blocks
+            .node_indices()
+            .flat_map(|node| mir.blocks[node].instructions.iter())
+            .any(|inst| matches!(inst, Instruction::Assert(_, _)));
 
         assert!(
             !found_assert,
@@ -628,14 +620,12 @@ mod tests {
 
         lowerer.lower_expr(&call_expr);
 
-        let mut found_assert = false;
-        for node in lowerer.body.blocks.node_indices() {
-            for inst in &lowerer.body.blocks[node].instructions {
-                if let Instruction::Assert(_, _) = inst {
-                    found_assert = true;
-                }
-            }
-        }
+        let found_assert = lowerer
+            .body
+            .blocks
+            .node_indices()
+            .flat_map(|node| lowerer.body.blocks[node].instructions.iter())
+            .any(|inst| matches!(inst, Instruction::Assert(_, _)));
         assert!(
             !found_assert,
             "runtime contract asserts must be disabled unless check_contracts is enabled"
@@ -724,10 +714,15 @@ mod tests {
 
         for node in mir.blocks.node_indices() {
             for inst in &mir.blocks[node].instructions {
-                match inst {
-                    Instruction::ZoneEnter(name) if name == "temp_arena" => found_enter = true,
-                    Instruction::ZoneExit(name) if name == "temp_arena" => found_exit = true,
-                    _ => {}
+                if let Instruction::ZoneEnter(name) = inst {
+                    if name == "temp_arena" {
+                        found_enter = true;
+                    }
+                }
+                if let Instruction::ZoneExit(name) = inst {
+                    if name == "temp_arena" {
+                        found_exit = true;
+                    }
                 }
             }
         }
@@ -885,11 +880,12 @@ mod tests {
             &HirExpr::Literal(izel_parser::ast::Literal::Int(9)),
         );
 
-        assert!(matches!(substituted, HirExpr::Call(_, _, _, _)));
-        if let HirExpr::Call(callee, args, requires, _) = substituted {
-            assert!(matches!(*callee, HirExpr::Unary(_, _, _)));
-            assert_eq!(args.len(), 1);
-            assert_eq!(requires.len(), 1);
-        }
+        assert!(matches!(
+            substituted,
+            HirExpr::Call(ref callee, ref args, ref requires, _)
+                if matches!(callee.as_ref(), HirExpr::Unary(_, _, _))
+                    && args.len() == 1
+                    && requires.len() == 1
+        ));
     }
 }

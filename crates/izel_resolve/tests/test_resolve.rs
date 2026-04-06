@@ -161,3 +161,84 @@ fn resolver_load_module_covers_base_path_and_cached_module_branches() {
 
     fs::remove_dir_all(base).expect("temp dir should be removable");
 }
+
+#[test]
+fn resolver_manual_cst_paths_cover_impl_let_draw_and_default_branches() {
+    use izel_lexer::Token;
+    use izel_parser::cst::{NodeKind, SyntaxElement};
+
+    fn span(lo: u32, hi: u32) -> Span {
+        Span::new(BytePos(lo), BytePos(hi), SourceId(0))
+    }
+
+    fn tok(kind: TokenKind, lo: u32, hi: u32) -> SyntaxElement {
+        SyntaxElement::Token(Token::new(kind, span(lo, hi)))
+    }
+
+    let mut resolver = Resolver::default();
+
+    // Hit load_module branch where a local symbol exists but is not a module.
+    let name_span = span(0, 1);
+    resolver
+        .root_scope
+        .define("n".to_string(), name_span, DefId(99));
+    let base = new_temp_dir("izel_resolve_non_module_local");
+    resolver.base_path = Some(base.clone());
+    assert!(resolver.load_module("n").is_none());
+
+    // Prepare an already-loaded module to cover draw traversal through an existing module symbol.
+    let preloaded = Arc::new(Scope::new(None));
+    preloaded.define("inner".to_string(), span(6, 7), DefId(200));
+    resolver.current_scope.define_module(
+        "m".to_string(),
+        span(4, 5),
+        DefId(199),
+        preloaded.clone(),
+    );
+
+    let source = "i l n m";
+    let impl_block = SyntaxNode::new(NodeKind::ImplBlock, vec![tok(TokenKind::Ident, 0, 1)]);
+    let let_stmt = SyntaxNode::new(
+        NodeKind::LetStmt,
+        vec![tok(TokenKind::Let, 2, 3), tok(TokenKind::Ident, 4, 5)],
+    );
+    let draw_existing = SyntaxNode::new(
+        NodeKind::DrawDecl,
+        vec![
+            tok(TokenKind::Ident, 6, 7),
+            SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::ExprStmt,
+                vec![tok(TokenKind::Ident, 0, 1)],
+            )),
+        ],
+    );
+    let draw_empty = SyntaxNode::new(NodeKind::DrawDecl, vec![]);
+    let ward_missing_name = SyntaxNode::new(
+        NodeKind::WardDecl,
+        vec![
+            tok(TokenKind::Ward, 8, 9),
+            SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::ExprStmt,
+                vec![tok(TokenKind::Ident, 0, 1)],
+            )),
+        ],
+    );
+
+    let root = SyntaxNode::new(
+        NodeKind::SourceFile,
+        vec![
+            SyntaxElement::Node(impl_block),
+            SyntaxElement::Node(let_stmt),
+            SyntaxElement::Node(draw_existing),
+            SyntaxElement::Node(draw_empty),
+            SyntaxElement::Node(ward_missing_name),
+        ],
+    );
+
+    resolver.resolve_source_file(&root, source);
+
+    assert!(resolver.current_scope.resolve("n").is_some());
+    assert!(resolver.current_scope.resolve("inner").is_some());
+
+    fs::remove_dir_all(base).expect("temp dir should be removable");
+}

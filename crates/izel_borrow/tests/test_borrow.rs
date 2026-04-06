@@ -154,3 +154,103 @@ fn reborrow_after_last_use_in_later_block_is_allowed() {
         result.err()
     );
 }
+
+#[test]
+fn borrow_checker_reports_double_mutable_borrow_in_same_region() {
+    let mut mir = MirBody::new();
+    let x = Local(0);
+    let m1 = Local(1);
+    let m2 = Local(2);
+
+    mir.locals.push(LocalData {
+        name: "x".to_string(),
+        ty: Type::Adt(izel_resolve::DefId(10)),
+    });
+    mir.locals.push(LocalData {
+        name: "m1".to_string(),
+        ty: Type::Pointer(
+            Box::new(Type::Adt(izel_resolve::DefId(10))),
+            true,
+            izel_typeck::type_system::Lifetime::Anonymous(0),
+        ),
+    });
+    mir.locals.push(LocalData {
+        name: "m2".to_string(),
+        ty: Type::Pointer(
+            Box::new(Type::Adt(izel_resolve::DefId(10))),
+            true,
+            izel_typeck::type_system::Lifetime::Anonymous(0),
+        ),
+    });
+
+    let bb = mir.blocks.node_weight_mut(mir.entry).unwrap();
+    bb.instructions.push(Instruction::Assign(
+        x,
+        Rvalue::Use(Operand::Constant(Constant::Int(1))),
+    ));
+    bb.instructions
+        .push(Instruction::Assign(m1, Rvalue::Ref(x, true)));
+    bb.instructions
+        .push(Instruction::Assign(m2, Rvalue::Ref(x, true)));
+
+    let mut checker = BorrowChecker::default();
+    let errors = checker
+        .check(&mir)
+        .expect_err("double mutable borrow should be rejected");
+    assert!(errors.iter().any(|e| e.contains("mutable more than once")));
+}
+
+#[test]
+fn borrow_checker_covers_zone_call_tracking_and_uninitialized_ref_paths() {
+    let mut mir = MirBody::new();
+    let x = Local(0);
+    let out = Local(1);
+
+    mir.locals.push(LocalData {
+        name: "x".to_string(),
+        ty: Type::Adt(izel_resolve::DefId(11)),
+    });
+    mir.locals.push(LocalData {
+        name: "out".to_string(),
+        ty: Type::Pointer(
+            Box::new(Type::Adt(izel_resolve::DefId(11))),
+            false,
+            izel_typeck::type_system::Lifetime::Anonymous(0),
+        ),
+    });
+
+    let bb = mir.blocks.node_weight_mut(mir.entry).unwrap();
+    bb.instructions
+        .push(Instruction::ZoneEnter("arena".to_string()));
+    bb.instructions.push(Instruction::Call(
+        Some(out),
+        "alloc_like".to_string(),
+        vec![Operand::Constant(Constant::Int(1))],
+    ));
+    bb.instructions.push(Instruction::Phi(Local(0), vec![]));
+    bb.instructions
+        .push(Instruction::Assign(Local(1), Rvalue::Ref(x, false)));
+    bb.instructions
+        .push(Instruction::ZoneExit("arena".to_string()));
+
+    let mut checker = BorrowChecker::new();
+    let errors = checker
+        .check(&mir)
+        .expect_err("uninitialized ref should be reported");
+    assert!(errors
+        .iter()
+        .any(|e| e.contains("Cannot borrow uninitialized or moved variable: x")));
+}
+
+#[test]
+fn borrow_checker_zone_enter_exit_without_payload_is_valid() {
+    let mut mir = MirBody::new();
+    let bb = mir.blocks.node_weight_mut(mir.entry).unwrap();
+    bb.instructions
+        .push(Instruction::ZoneEnter("arena".to_string()));
+    bb.instructions
+        .push(Instruction::ZoneExit("arena".to_string()));
+
+    let mut checker = BorrowChecker::new();
+    assert!(checker.check(&mir).is_ok());
+}

@@ -365,11 +365,11 @@ mod tests {
         assert!(matches!(hir.items[3], HirItem::Draw(_)));
         assert!(matches!(hir.items[4], HirItem::Echo(_)));
 
-        assert!(matches!(hir.items[2], HirItem::Ward(_)));
-        if let HirItem::Ward(ward) = &hir.items[2] {
-            assert_eq!(ward.items.len(), 1);
-            assert!(matches!(ward.items[0], HirItem::Forge(_)));
-        }
+        assert!(matches!(
+            hir.items[2],
+            HirItem::Ward(ref ward)
+                if ward.items.len() == 1 && matches!(ward.items[0], HirItem::Forge(_))
+        ));
     }
 
     #[test]
@@ -466,10 +466,10 @@ mod tests {
         assert_eq!(forge.params[0].ty, Type::Prim(PrimType::I64));
         assert!(forge.params[0].default_value.is_some());
 
-        assert!(matches!(forge.requires[0], HirExpr::Call(_, _, _, _)));
-        if let HirExpr::Call(_, _, _, ty) = &forge.requires[0] {
-            assert_eq!(*ty, Type::Prim(PrimType::I32));
-        }
+        assert!(matches!(
+            &forge.requires[0],
+            HirExpr::Call(_, _, _, ty) if *ty == Type::Prim(PrimType::I32)
+        ));
 
         let HirBlock { stmts, expr, .. } = forge.body.as_ref().expect("forge body");
         assert_eq!(stmts.len(), 1);
@@ -512,15 +512,15 @@ mod tests {
             span: sp(203),
         };
         let lowered_let = lowerer.lower_stmt(&unsupported_let);
-        assert!(matches!(lowered_let, HirStmt::Let { .. }));
-        if let HirStmt::Let {
-            name, def_id, ty, ..
-        } = lowered_let
-        {
-            assert_eq!(name, "_hir_pattern_unsupported");
-            assert_eq!(def_id, DefId(0));
-            assert_eq!(ty, Type::Error);
-        }
+        assert!(matches!(
+            lowered_let,
+            HirStmt::Let {
+                ref name,
+                def_id,
+                ref ty,
+                ..
+            } if name == "_hir_pattern_unsupported" && def_id == DefId(0) && *ty == Type::Error
+        ));
 
         let expr_stmt = ast::Stmt::Expr(ast::Expr::Unary(
             ast::UnaryOp::Neg,
@@ -530,12 +530,11 @@ mod tests {
 
         let ident = ast::Expr::Ident("x".to_string(), ident_span);
         let lowered_ident = lowerer.lower_expr(&ident);
-        assert!(matches!(lowered_ident, HirExpr::Ident(_, _, _, _)));
-        if let HirExpr::Ident(name, def_id, ty, _) = lowered_ident {
-            assert_eq!(name, "x");
-            assert_eq!(def_id, DefId(20));
-            assert_eq!(ty, Type::Prim(PrimType::I32));
-        }
+        assert!(matches!(
+            lowered_ident,
+            HirExpr::Ident(ref name, def_id, ref ty, _)
+                if name == "x" && def_id == DefId(20) && *ty == Type::Prim(PrimType::I32)
+        ));
 
         let call_ident = ast::Expr::Call(
             Box::new(ast::Expr::Ident("callee".to_string(), callee_span)),
@@ -546,19 +545,19 @@ mod tests {
             }],
         );
         let lowered_call_ident = lowerer.lower_expr(&call_ident);
-        assert!(matches!(lowered_call_ident, HirExpr::Call(_, _, _, _)));
-        if let HirExpr::Call(_, args, _, ty) = lowered_call_ident {
-            assert_eq!(args.len(), 1);
-            assert_eq!(ty, Type::Prim(PrimType::I16));
-        }
+        assert!(matches!(
+            lowered_call_ident,
+            HirExpr::Call(_, ref args, _, ref ty)
+                if args.len() == 1 && *ty == Type::Prim(PrimType::I16)
+        ));
 
         let call_non_ident =
             ast::Expr::Call(Box::new(ast::Expr::Literal(ast::Literal::Int(1))), vec![]);
         let lowered_call_non_ident = lowerer.lower_expr(&call_non_ident);
-        assert!(matches!(lowered_call_non_ident, HirExpr::Call(_, _, _, _)));
-        if let HirExpr::Call(_, _, _, ty) = lowered_call_non_ident {
-            assert_eq!(ty, Type::Error);
-        }
+        assert!(matches!(
+            lowered_call_non_ident,
+            HirExpr::Call(_, _, _, ref ty) if *ty == Type::Error
+        ));
 
         let member = ast::Expr::Member(
             Box::new(ast::Expr::Ident("obj".to_string(), ident_span)),
@@ -566,17 +565,19 @@ mod tests {
             member_span,
         );
         let lowered_member = lowerer.lower_expr(&member);
-        assert!(matches!(lowered_member, HirExpr::Call(_, _, _, _)));
-        if let HirExpr::Call(callee, args, _, ty) = lowered_member {
-            assert_eq!(args.len(), 1);
-            assert_eq!(ty, Type::Error);
-            assert!(matches!(*callee, HirExpr::Ident(_, _, _, _)));
-            if let HirExpr::Ident(name, def_id, ref field_ty, _) = *callee {
-                assert_eq!(name, "field");
-                assert_eq!(def_id, DefId(21));
-                assert_eq!(*field_ty, Type::Prim(PrimType::Bool));
-            }
-        }
+        assert!(matches!(
+            lowered_member,
+            HirExpr::Call(ref callee, ref args, _, ref ty)
+                if args.len() == 1
+                    && *ty == Type::Error
+                    && matches!(
+                        callee.as_ref(),
+                        HirExpr::Ident(ref name, def_id, ref field_ty, _)
+                            if name == "field"
+                                && *def_id == DefId(21)
+                                && *field_ty == Type::Prim(PrimType::Bool)
+                    )
+        ));
 
         let given = ast::Expr::Given {
             cond: Box::new(ast::Expr::Literal(ast::Literal::Bool(true))),
