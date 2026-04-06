@@ -33,9 +33,7 @@ impl Parser {
             children.push(SyntaxElement::Node(decl));
             children.extend(self.eat_trivia().into_iter());
 
-            if self.pos <= start_pos {
-                self.bump();
-            }
+            self.ensure_progress_at_or_before(start_pos);
         }
         SyntaxNode::new(NodeKind::SourceFile, children)
     }
@@ -200,9 +198,7 @@ impl Parser {
                     children.extend(self.eat_trivia());
                 }
 
-                if self.pos == start {
-                    self.bump();
-                }
+                self.ensure_progress(start);
             }
 
             if self.current_kind() == close {
@@ -273,9 +269,7 @@ impl Parser {
                     children.push(SyntaxElement::Token(self.bump()));
                     children.extend(self.eat_trivia().into_iter());
                 }
-                if self.pos == start {
-                    self.bump();
-                } // Safety bump
+                self.ensure_progress(start); // Safety bump
             }
             if self.current_kind() == TokenKind::CloseParen {
                 children.push(SyntaxElement::Token(self.bump())); // )
@@ -328,9 +322,7 @@ impl Parser {
                 let start = self.pos;
                 children.push(SyntaxElement::Node(self.parse_field()));
                 children.extend(self.eat_trivia().into_iter());
-                if self.pos == start {
-                    self.bump();
-                } // Safety bump
+                self.ensure_progress(start); // Safety bump
             }
             if self.current_kind() == TokenKind::CloseBrace {
                 children.push(SyntaxElement::Token(self.bump()));
@@ -354,9 +346,7 @@ impl Parser {
                 let start = self.pos;
                 children.push(SyntaxElement::Node(self.parse_decl()));
                 children.extend(self.eat_trivia().into_iter());
-                if self.pos == start {
-                    self.bump();
-                } // Safety bump
+                self.ensure_progress(start); // Safety bump
             }
             if self.current_kind() == TokenKind::CloseBrace {
                 children.push(SyntaxElement::Token(self.bump()));
@@ -510,9 +500,7 @@ impl Parser {
                 let start = self.pos;
                 children.push(SyntaxElement::Node(self.parse_variant()));
                 children.extend(self.eat_trivia().into_iter());
-                if self.pos == start {
-                    self.bump();
-                } // Safety bump
+                self.ensure_progress(start); // Safety bump
             }
             if self.current_kind() == TokenKind::CloseBrace {
                 children.push(SyntaxElement::Token(self.bump()));
@@ -547,9 +535,6 @@ impl Parser {
                 {
                     let t = self.bump();
                     children.push(SyntaxElement::Token(t));
-                    if t.kind == TokenKind::Eof {
-                        break;
-                    }
                 }
                 if self.current_kind() == TokenKind::CloseBrace {
                     children.push(SyntaxElement::Token(self.bump()));
@@ -561,9 +546,6 @@ impl Parser {
                 {
                     let t = self.bump();
                     children.push(SyntaxElement::Token(t));
-                    if t.kind == TokenKind::Eof {
-                        break;
-                    }
                 }
                 if self.current_kind() == TokenKind::CloseParen {
                     children.push(SyntaxElement::Token(self.bump()));
@@ -628,9 +610,7 @@ impl Parser {
                 let start = self.pos;
                 children.push(SyntaxElement::Node(self.parse_decl()));
                 children.extend(self.eat_trivia().into_iter());
-                if self.pos == start {
-                    self.bump();
-                } // Safety bump
+                self.ensure_progress(start); // Safety bump
             }
             if self.current_kind() == TokenKind::CloseBrace {
                 children.push(SyntaxElement::Token(self.bump()));
@@ -687,9 +667,7 @@ impl Parser {
                     children.push(SyntaxElement::Node(self.parse_decl()));
                 }
                 children.extend(self.eat_trivia().into_iter());
-                if self.pos == start {
-                    self.bump();
-                } // Safety bump
+                self.ensure_progress(start); // Safety bump
             }
             if self.current_kind() == TokenKind::CloseBrace {
                 children.push(SyntaxElement::Token(self.bump()));
@@ -738,9 +716,7 @@ impl Parser {
                 let start = self.pos;
                 children.push(SyntaxElement::Node(self.parse_decl()));
                 children.extend(self.eat_trivia().into_iter());
-                if self.pos == start {
-                    self.bump();
-                } // Safety bump
+                self.ensure_progress(start); // Safety bump
             }
             if self.current_kind() == TokenKind::CloseBrace {
                 children.push(SyntaxElement::Token(self.bump()));
@@ -809,9 +785,7 @@ impl Parser {
                     children.push(SyntaxElement::Token(self.bump()));
                 }
                 children.extend(self.eat_trivia().into_iter());
-                if self.pos == start {
-                    self.bump();
-                } // Safety bump
+                self.ensure_progress(start); // Safety bump
             }
             if self.current_kind() == close {
                 children.push(SyntaxElement::Token(self.bump()));
@@ -843,9 +817,7 @@ impl Parser {
                     children.push(SyntaxElement::Token(self.bump()));
                 }
                 children.extend(self.eat_trivia().into_iter());
-                if self.pos == start {
-                    self.bump();
-                } // Safety bump
+                self.ensure_progress(start); // Safety bump
             }
             if self.current_kind() == close {
                 children.push(SyntaxElement::Token(self.bump()));
@@ -993,9 +965,7 @@ impl Parser {
                 let start = self.pos;
                 children.push(SyntaxElement::Node(self.parse_stmt()));
                 children.extend(self.eat_trivia().into_iter());
-                if self.pos == start {
-                    self.bump();
-                } // Safety bump
+                self.ensure_progress(start); // Safety bump
             }
             if self.current_kind() == TokenKind::CloseBrace {
                 children.push(SyntaxElement::Token(self.bump()));
@@ -1006,7 +976,7 @@ impl Parser {
 
     pub fn parse_given_expr(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
         children.extend(self.eat_trivia());
-        children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+        children.push(SyntaxElement::Node(self.parse_expr(Precedence::Call)));
         children.extend(self.eat_trivia());
         if self.current_kind() == TokenKind::OpenBrace {
             children.push(SyntaxElement::Node(self.parse_block()));
@@ -1029,7 +999,7 @@ impl Parser {
 
     pub fn parse_branch_expr(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
         children.extend(self.eat_trivia());
-        children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+        children.push(SyntaxElement::Node(self.parse_expr(Precedence::Call)));
         children.extend(self.eat_trivia());
         if self.current_kind() == TokenKind::OpenBrace {
             children.push(SyntaxElement::Token(self.bump()));
@@ -1056,9 +1026,7 @@ impl Parser {
                     children.push(SyntaxElement::Token(self.bump()));
                 }
                 children.extend(self.eat_trivia().into_iter());
-                if self.pos == start {
-                    self.bump();
-                } // Safety bump
+                self.ensure_progress(start); // Safety bump
             }
             if self.current_kind() == TokenKind::CloseBrace {
                 children.push(SyntaxElement::Token(self.bump()));
@@ -1077,7 +1045,7 @@ impl Parser {
 
     pub fn parse_while_expr(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
         children.extend(self.eat_trivia());
-        children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+        children.push(SyntaxElement::Node(self.parse_expr(Precedence::Call)));
         children.extend(self.eat_trivia());
         if self.current_kind() == TokenKind::OpenBrace {
             children.push(SyntaxElement::Node(self.parse_block()));
@@ -1087,12 +1055,12 @@ impl Parser {
 
     pub fn parse_each_expr(&mut self, mut children: Vec<SyntaxElement>) -> SyntaxNode {
         children.extend(self.eat_trivia());
-        children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+        children.push(SyntaxElement::Node(self.parse_expr(Precedence::Call)));
         children.extend(self.eat_trivia());
         if self.current_kind() == TokenKind::In {
             children.push(SyntaxElement::Token(self.bump()));
             children.extend(self.eat_trivia());
-            children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+            children.push(SyntaxElement::Node(self.parse_expr(Precedence::Call)));
         }
         children.extend(self.eat_trivia());
         if self.current_kind() == TokenKind::OpenBrace {
@@ -1225,9 +1193,7 @@ impl Parser {
                 inner,
             )));
             results.extend(self.eat_trivia().into_iter());
-            if self.pos == start {
-                self.bump();
-            } // Safety bump
+            self.ensure_progress(start); // Safety bump
         }
         results
     }
@@ -1250,11 +1216,21 @@ impl Parser {
             let start = self.pos;
             children.push(SyntaxElement::Node(self.parse_attribute()));
             children.extend(self.eat_trivia().into_iter());
-            if self.pos == start {
-                self.bump();
-            } // Safety bump
+            self.ensure_progress(start); // Safety bump
         }
         SyntaxNode::new(NodeKind::Attributes, children)
+    }
+
+    fn ensure_progress(&mut self, start: usize) {
+        if self.pos == start {
+            self.bump();
+        }
+    }
+
+    fn ensure_progress_at_or_before(&mut self, start: usize) {
+        if self.pos <= start {
+            self.bump();
+        }
     }
 
     fn parse_attribute(&mut self) -> SyntaxNode {
@@ -1604,5 +1580,59 @@ draw std/io::*;
         let parsed_attrs = attrs.parse_attributes();
         assert_eq!(parsed_attrs.kind, NodeKind::Attributes);
         assert!(count_kind(&parsed_attrs, NodeKind::Attribute) >= 1);
+    }
+
+    #[test]
+    fn test_parse_control_flow_conditions_preserve_following_blocks() {
+        let mut given = parser_from("cond { give 1 } else { give 2 }");
+        let given_node = given.parse_given_expr(vec![]);
+        assert!(count_kind(&given_node, NodeKind::Block) >= 2);
+
+        let mut branch = parser_from("value { _ given cond => 1, _ => 0 }");
+        let branch_node = branch.parse_branch_expr(vec![]);
+        assert!(count_kind(&branch_node, NodeKind::Pattern) >= 2);
+
+        let mut while_expr = parser_from("cond { give 1 }");
+        let while_node = while_expr.parse_while_expr(vec![]);
+        assert!(contains_kind(&while_node, NodeKind::Block));
+
+        let mut each_expr = parser_from("item in items { give item }");
+        let each_node = each_expr.parse_each_expr(vec![]);
+        assert!(contains_kind(&each_node, NodeKind::Block));
+    }
+
+    #[test]
+    fn test_parse_macro_decl_without_param_delimiters() {
+        let node = parse_test("macro noop");
+        assert_eq!(node.kind, NodeKind::MacroDecl);
+    }
+
+    #[test]
+    fn test_progress_helpers_advance_parser_when_stalled() {
+        let span = izel_span::Span::dummy();
+
+        let mut parser = Parser::new(
+            vec![
+                Token::new(TokenKind::Ident, span),
+                Token::new(TokenKind::Eof, span),
+            ],
+            String::new(),
+        );
+        parser.ensure_progress(0);
+        assert_eq!(parser.pos, 1);
+        parser.ensure_progress(0);
+        assert_eq!(parser.pos, 1);
+
+        let mut parser2 = Parser::new(
+            vec![
+                Token::new(TokenKind::Ident, span),
+                Token::new(TokenKind::Eof, span),
+            ],
+            String::new(),
+        );
+        parser2.ensure_progress_at_or_before(1);
+        assert_eq!(parser2.pos, 1);
+        parser2.ensure_progress_at_or_before(0);
+        assert_eq!(parser2.pos, 1);
     }
 }

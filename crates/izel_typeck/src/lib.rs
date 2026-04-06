@@ -6777,4 +6777,105 @@ mod tests {
         );
         assert!(matches!(selected, Type::Var(_)));
     }
+
+    #[test]
+    fn test_unify_optional_cascade_function_and_overload_edge_paths() {
+        let mut tc = TypeChecker::new();
+
+        let i32_ty = Type::Prim(PrimType::I32);
+        let bool_ty = Type::Prim(PrimType::Bool);
+        let none_ty = Type::Prim(PrimType::None);
+
+        assert!(tc.unify(&Type::Cascade(Box::new(i32_ty.clone())), &none_ty));
+        assert!(tc.unify(
+            &Type::Optional(Box::new(i32_ty.clone())),
+            &Type::Cascade(Box::new(i32_ty.clone()))
+        ));
+        assert!(tc.unify(
+            &Type::Optional(Box::new(i32_ty.clone())),
+            &Type::Optional(Box::new(i32_ty.clone()))
+        ));
+        assert!(tc.unify(
+            &Type::Cascade(Box::new(i32_ty.clone())),
+            &Type::Cascade(Box::new(i32_ty.clone()))
+        ));
+        assert!(tc.unify(&i32_ty, &Type::Optional(Box::new(i32_ty.clone()))));
+        assert!(tc.unify(&i32_ty, &Type::Cascade(Box::new(i32_ty.clone()))));
+        assert!(tc.unify(&Type::Cascade(Box::new(i32_ty.clone())), &i32_ty));
+
+        let static_one = Type::Static(vec![("x".to_string(), i32_ty.clone())]);
+        let static_empty = Type::Static(vec![]);
+        assert!(!tc.unify(&static_one, &static_empty));
+
+        let static_named = Type::Static(vec![("x".to_string(), i32_ty.clone())]);
+        let static_other_name = Type::Static(vec![("y".to_string(), i32_ty.clone())]);
+        assert!(!tc.unify(&static_named, &static_other_name));
+
+        let fn_one = Type::Function {
+            params: vec![i32_ty.clone()],
+            ret: Box::new(i32_ty.clone()),
+            effects: EffectSet::Concrete(vec![]),
+        };
+        let fn_zero = Type::Function {
+            params: vec![],
+            ret: Box::new(i32_ty.clone()),
+            effects: EffectSet::Concrete(vec![]),
+        };
+        assert!(!tc.unify(&fn_one, &fn_zero));
+
+        let fn_param_mismatch = Type::Function {
+            params: vec![bool_ty.clone()],
+            ret: Box::new(i32_ty.clone()),
+            effects: EffectSet::Concrete(vec![]),
+        };
+        assert!(!tc.unify(&fn_one, &fn_param_mismatch));
+
+        let fn_ret_mismatch = Type::Function {
+            params: vec![i32_ty.clone()],
+            ret: Box::new(bool_ty.clone()),
+            effects: EffectSet::Concrete(vec![]),
+        };
+        assert!(!tc.unify(&fn_one, &fn_ret_mismatch));
+
+        let var_effect = tc.new_effect_var();
+        let concrete_effect = EffectSet::Concrete(vec![Effect::IO]);
+        assert!(tc.unify_effects(&concrete_effect, &var_effect));
+
+        assert!(tc.type_compatible_for_overload(
+            &Type::Optional(Box::new(i32_ty.clone())),
+            &Type::Optional(Box::new(i32_ty.clone()))
+        ));
+        assert!(tc.type_compatible_for_overload(
+            &Type::Cascade(Box::new(i32_ty.clone())),
+            &Type::Cascade(Box::new(i32_ty.clone()))
+        ));
+        assert!(
+            tc.overload_match_score(
+                &Type::Optional(Box::new(i32_ty.clone())),
+                &Type::Optional(Box::new(i32_ty.clone()))
+            ) > 0
+        );
+        assert!(
+            tc.overload_match_score(
+                &Type::Cascade(Box::new(i32_ty.clone())),
+                &Type::Cascade(Box::new(i32_ty.clone()))
+            ) > 0
+        );
+
+        let mut maybe_var_id = None;
+        if let Type::Var(var_id) = tc.new_var() {
+            maybe_var_id = Some(var_id);
+        }
+        assert!(maybe_var_id.is_some());
+        let var_id = maybe_var_id.expect("type var should be created");
+
+        assert!(tc.check_and_adjust(
+            var_id,
+            tc.current_level,
+            &Type::Assoc(Box::new(Type::Prim(PrimType::I32)), "Item".to_string())
+        ));
+
+        let self_recursive_static = Type::Static(vec![("f".to_string(), Type::Var(var_id))]);
+        assert!(!tc.check_and_adjust(var_id, tc.current_level, &self_recursive_static));
+    }
 }

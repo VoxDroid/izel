@@ -5,6 +5,7 @@ use inkwell::basic_block::BasicBlock as LlvmBasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
+use inkwell::types::BasicType;
 
 use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue};
 use inkwell::IntPredicate;
@@ -291,27 +292,6 @@ impl<'ctx, 'a> Codegen<'ctx, 'a> {
         llvm_type_static(self.context, ty)
     }
 
-    fn llvm_return_type(&self, ty: &Type) -> Result<inkwell::types::AnyTypeEnum<'ctx>> {
-        if let Type::Prim(PrimType::Void) = ty {
-            Ok(inkwell::types::AnyTypeEnum::VoidType(
-                self.context.void_type(),
-            ))
-        } else {
-            let bt = self.llvm_type(ty)?;
-            match bt {
-                inkwell::types::BasicTypeEnum::IntType(i) => {
-                    Ok(inkwell::types::AnyTypeEnum::IntType(i))
-                }
-                inkwell::types::BasicTypeEnum::FloatType(f) => {
-                    Ok(inkwell::types::AnyTypeEnum::FloatType(f))
-                }
-                inkwell::types::BasicTypeEnum::PointerType(p) => {
-                    Ok(inkwell::types::AnyTypeEnum::PointerType(p))
-                }
-                _ => Err(anyhow!("Unsupported basic type for return")),
-            }
-        }
-    }
     pub fn new(context: &'ctx Context, name: &str, source: &'a str) -> Self {
         let module = context.create_module(name);
         let builder = context.create_builder();
@@ -344,18 +324,15 @@ impl<'ctx, 'a> Codegen<'ctx, 'a> {
     fn declare_item(&mut self, item: &HirItem) -> Result<()> {
         match item {
             HirItem::Forge(f) => {
-                let ret_type = self.llvm_return_type(&f.ret_type)?;
                 let mut arg_types = Vec::new();
                 for p in &f.params {
                     arg_types.push(self.llvm_type(&p.ty)?.into());
                 }
 
-                let fn_type = match ret_type {
-                    inkwell::types::AnyTypeEnum::VoidType(v) => v.fn_type(&arg_types, false),
-                    inkwell::types::AnyTypeEnum::IntType(i) => i.fn_type(&arg_types, false),
-                    inkwell::types::AnyTypeEnum::FloatType(f) => f.fn_type(&arg_types, false),
-                    inkwell::types::AnyTypeEnum::PointerType(p) => p.fn_type(&arg_types, false),
-                    _ => return Err(anyhow!("Unsupported return type")),
+                let fn_type = if matches!(f.ret_type, Type::Prim(PrimType::Void)) {
+                    self.context.void_type().fn_type(&arg_types, false)
+                } else {
+                    self.llvm_type(&f.ret_type)?.fn_type(&arg_types, false)
                 };
 
                 let gen_name = format!("_iz_{}", f.name);
@@ -1226,6 +1203,96 @@ mod tests {
         assert!(ir.contains("ret void"));
         assert!(ir.contains("define void @no_term_fn()"));
         assert!(ir.contains("unreachable"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_codegen_covers_remaining_bin_un_and_type_arms() -> Result<()> {
+        let context = Context::create();
+        let module = context.create_module("ops_and_types");
+        let builder = context.create_builder();
+
+        let fn_ty = context.i32_type().fn_type(&[], false);
+        let function = module.add_function("ops", fn_ty, None);
+        let entry = context.append_basic_block(function, "entry");
+        builder.position_at_end(entry);
+
+        let mut mir_codegen = MirCodegen::new(&context, &module, &builder);
+        let lhs = context.i32_type().const_int(8, false).into();
+        let rhs = context.i32_type().const_int(2, false).into();
+
+        for op in [
+            BinOp::Mul,
+            BinOp::Div,
+            BinOp::Eq,
+            BinOp::Ne,
+            BinOp::Lt,
+            BinOp::Le,
+            BinOp::Gt,
+            BinOp::Ge,
+        ] {
+            let _ = mir_codegen.gen_bin_op(op, lhs, rhs)?;
+        }
+
+        let _ = mir_codegen.gen_un_op(UnOp::Not, context.bool_type().const_int(1, false).into())?;
+        builder.build_return(Some(&context.i32_type().const_int(0, false)))?;
+
+        let i8 = llvm_type_static(&context, &Type::Prim(PrimType::I8))?;
+        assert!(matches!(
+            i8,
+            inkwell::types::BasicTypeEnum::IntType(t) if t.get_bit_width() == 8
+        ));
+
+        let i16 = llvm_type_static(&context, &Type::Prim(PrimType::I16))?;
+        assert!(matches!(
+            i16,
+            inkwell::types::BasicTypeEnum::IntType(t) if t.get_bit_width() == 16
+        ));
+
+        let i128 = llvm_type_static(&context, &Type::Prim(PrimType::I128))?;
+        assert!(matches!(
+            i128,
+            inkwell::types::BasicTypeEnum::IntType(t) if t.get_bit_width() == 128
+        ));
+
+        let f32 = llvm_type_static(&context, &Type::Prim(PrimType::F32))?;
+        assert!(matches!(f32, inkwell::types::BasicTypeEnum::FloatType(_)));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_codegen_body_without_mir_and_intrinsic_cache_hit() -> Result<()> {
+        let context = Context::create();
+        let mut codegen = Codegen::new(&context, "body_without_mir", "");
+
+        let item = HirItem::Forge(Box::new(HirForge {
+            name: "no_mir_body".to_string(),
+            name_span: Span::dummy(),
+            def_id: DefId(900),
+            params: vec![],
+            ret_type: Type::Prim(PrimType::I32),
+            attributes: vec![],
+            body: Some(HirBlock {
+                stmts: vec![],
+                expr: Some(Box::new(HirExpr::Literal(ast::Literal::Int(0)))),
+                span: Span::dummy(),
+            }),
+            requires: vec![],
+            ensures: vec![],
+            span: Span::dummy(),
+        }));
+
+        codegen.declare_item(&item)?;
+        codegen.gen_item(&item, &HashMap::new())?;
+
+        let first = codegen.get_intrinsic("llvm.abs.i32")?;
+        let second = codegen.get_intrinsic("llvm.abs.i32")?;
+        assert_eq!(
+            first.as_global_value().as_pointer_value(),
+            second.as_global_value().as_pointer_value()
+        );
 
         Ok(())
     }
