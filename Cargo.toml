@@ -63,3 +63,4 @@ izel_fmt = { path = "crates/izel_fmt" }
 izel_lsp = { path = "crates/izel_lsp" }
 izel_pm = { path = "crates/izel_pm" }
 izel_hir = { path = "crates/izel_hir" }
+

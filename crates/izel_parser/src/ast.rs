@@ -711,3 +711,20 @@ impl AlphaEq for Arm {
             && self.body.alpha_eq(&other.body)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Literal;
+
+    #[test]
+    fn literal_string_partial_eq_branch() {
+        assert_eq!(
+            Literal::Str("ok".to_string()),
+            Literal::Str("ok".to_string())
+        );
+        assert_ne!(
+            Literal::Str("ok".to_string()),
+            Literal::Str("no".to_string())
+        );
+    }
+}

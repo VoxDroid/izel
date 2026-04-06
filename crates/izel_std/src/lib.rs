@@ -17,8 +17,7 @@ mod tests {
     #[test]
     fn std_iter_exposes_full_combinator_surface() {
         let iter_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../library/std/iter.iz");
-        let src = fs::read_to_string(&iter_path)
-            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", iter_path, e));
+        let src = fs::read_to_string(&iter_path).expect("failed to read std::iter fixture");
 
         let required = [
             "forge map<",
@@ -65,8 +64,7 @@ mod tests {
     fn std_witness_exposes_builtin_surface() {
         let witness_path =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../library/std/witness.iz");
-        let src = fs::read_to_string(&witness_path)
-            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", witness_path, e));
+        let src = fs::read_to_string(&witness_path).expect("failed to read std::witness fixture");
 
         let required = [
             "shape NonZero<",
@@ -98,16 +96,13 @@ mod tests {
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../library/std/async.iz");
         let chan_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../library/std/chan.iz");
 
-        let thread_src = fs::read_to_string(&thread_path)
-            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", thread_path, e));
-        let sync_src = fs::read_to_string(&sync_path)
-            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", sync_path, e));
-        let atomic_src = fs::read_to_string(&atomic_path)
-            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", atomic_path, e));
-        let async_src = fs::read_to_string(&async_path)
-            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", async_path, e));
-        let chan_src = fs::read_to_string(&chan_path)
-            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", chan_path, e));
+        let thread_src =
+            fs::read_to_string(&thread_path).expect("failed to read std::thread fixture");
+        let sync_src = fs::read_to_string(&sync_path).expect("failed to read std::sync fixture");
+        let atomic_src =
+            fs::read_to_string(&atomic_path).expect("failed to read std::atomic fixture");
+        let async_src = fs::read_to_string(&async_path).expect("failed to read std::async fixture");
+        let chan_src = fs::read_to_string(&chan_path).expect("failed to read std::chan fixture");
 
         let required_thread = [
             "shape JoinHandle<",
@@ -184,8 +179,7 @@ mod tests {
         let sync_path =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../library/std/atomic.iz");
 
-        let src = fs::read_to_string(&sync_path)
-            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", sync_path, e));
+        let src = fs::read_to_string(&sync_path).expect("failed to read std::atomic fixture");
 
         let required = [
             "scroll Ordering",
@@ -282,8 +276,7 @@ mod tests {
         for (file_name, required) in checks {
             let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join(format!("../../library/std/{}", file_name));
-            let src = fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+            let src = fs::read_to_string(&path).expect("failed to read std core fixture");
 
             for symbol in required {
                 assert!(
@@ -331,8 +324,7 @@ mod tests {
         for (file_name, required) in checks {
             let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join(format!("../../library/std/{}", file_name));
-            let src = fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+            let src = fs::read_to_string(&path).expect("failed to read std io fixture");
 
             for symbol in required {
                 assert!(
@@ -398,8 +390,7 @@ mod tests {
         for (file_name, required) in checks {
             let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join(format!("../../library/std/{}", file_name));
-            let src = fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+            let src = fs::read_to_string(&path).expect("failed to read std math fixture");
 
             for symbol in required {
                 assert!(
@@ -435,8 +426,7 @@ mod tests {
         for (file_name, required) in checks {
             let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join(format!("../../library/std/{}", file_name));
-            let src = fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+            let src = fs::read_to_string(&path).expect("failed to read std test fixture");
 
             for symbol in required {
                 assert!(

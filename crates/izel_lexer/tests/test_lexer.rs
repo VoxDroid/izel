@@ -121,3 +121,61 @@ fn doc_comments_at_eof_are_emitted_as_comment_tokens() {
     let comment_count = kinds.iter().filter(|k| **k == TokenKind::Comment).count();
     assert_eq!(comment_count, 2);
 }
+
+#[test]
+fn lexes_remaining_operator_and_fallback_token_paths() {
+    let kinds = lex_kinds("..= ^ §");
+    assert_eq!(
+        kinds,
+        vec![TokenKind::DotDotEq, TokenKind::Caret, TokenKind::Unknown]
+    );
+}
+
+#[test]
+fn lexes_byte_literal_and_byte_string_escape_paths() {
+    let kinds = lex_kinds("b'\\n' b\"\\t\"");
+    assert_eq!(
+        kinds,
+        vec![
+            TokenKind::Byte { terminated: true },
+            TokenKind::ByteStr { terminated: true }
+        ]
+    );
+}
+
+#[test]
+fn raw_and_interpolated_string_edge_paths_are_tokenized() {
+    let kinds = lex_kinds("`\\n` r# r#\"unterminated");
+    assert_eq!(
+        kinds,
+        vec![
+            TokenKind::InterpolatedStr { terminated: true },
+            TokenKind::Unknown,
+            TokenKind::Str { terminated: false },
+        ]
+    );
+}
+
+#[test]
+fn unterminated_char_and_byte_literal_paths_are_tokenized() {
+    let kinds = lex_kinds("' b'");
+    assert_eq!(
+        kinds,
+        vec![
+            TokenKind::Char { terminated: false },
+            TokenKind::Byte { terminated: false },
+        ]
+    );
+}
+
+#[test]
+fn lone_quote_char_path_sets_unterminated_char_token() {
+    let kinds = lex_kinds("'");
+    assert_eq!(kinds, vec![TokenKind::Char { terminated: false }]);
+}
+
+#[test]
+fn terminated_char_literal_path_is_tokenized() {
+    let kinds = lex_kinds("'a'");
+    assert_eq!(kinds, vec![TokenKind::Char { terminated: true }]);
+}

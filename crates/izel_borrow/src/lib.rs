@@ -127,51 +127,52 @@ impl BorrowChecker {
                         active_zones.push(name.clone());
                     }
                     Instruction::ZoneExit(name) => {
-                        if active_zones.last() == Some(name) {
-                            if let Some(alloc_locals) = zone_allocations.get(name) {
-                                for local in alloc_locals {
-                                    if let Some(borrows) = active_borrows.get(local) {
-                                        for b in borrows {
-                                            // A simple check: if the borrow is live in any block that
-                                            // is AFTER the block containing ZoneExit, it definitely escapes.
-                                            // Furthermore, if it is live OUT of the block containing ZoneExit
-                                            // (which means it's used after the ZoneExit instruction in the same block
-                                            // or in a subsequent block).
+                        if active_zones.last() != Some(name) {
+                            continue;
+                        }
+                        if let Some(alloc_locals) = zone_allocations.get(name) {
+                            for local in alloc_locals {
+                                if let Some(borrows) = active_borrows.get(local) {
+                                    for b in borrows {
+                                        // A simple check: if the borrow is live in any block that
+                                        // is AFTER the block containing ZoneExit, it definitely escapes.
+                                        // Furthermore, if it is live OUT of the block containing ZoneExit
+                                        // (which means it's used after the ZoneExit instruction in the same block
+                                        // or in a subsequent block).
 
-                                            // `node` is the BlockId containing the ZoneExit instruction.
-                                            // If the borrow's region contains any block with index > node.index(), it escapes.
-                                            // If the borrow's region contains `node` ITSELF, but the actual usage
-                                            // is after the `ZoneExit` instruction... how do we know?
-                                            // The simplest abstraction for our NLL is: a borrow escapes if its region
-                                            // contains any block >= `node` (the exit block).
-                                            // Wait, what if the `ZoneExit` is the last instruction, and the borrow
-                                            // was used in the SAME block BEFORE `ZoneExit`?
-                                            // If so, the borrow is NOT live OUT of the `node` block (assuming no later uses).
-                                            // BUT our `LivenessAnalysis` in `infer_borrow_regions` adds the block where the
-                                            // borrow was created to `b.region`. So if created in `B2`, `B2` is in region.
-                                            // In our failing test, it's created in `B2`, `ZoneExit` is in `B3`, and used in `B3`.
-                                            // So `b.region` should contain `B3`.
-                                            // In the passing test, it's created in `B2`, used in `B2`, `ZoneExit` in `B3`.
-                                            // So `b.region` contains ONLY `B2`.
-                                            // Therefore, if `b.region` contains ANY block >= `node`, it escapes!
+                                        // `node` is the BlockId containing the ZoneExit instruction.
+                                        // If the borrow's region contains any block with index > node.index(), it escapes.
+                                        // If the borrow's region contains `node` ITSELF, but the actual usage
+                                        // is after the `ZoneExit` instruction... how do we know?
+                                        // The simplest abstraction for our NLL is: a borrow escapes if its region
+                                        // contains any block >= `node` (the exit block).
+                                        // Wait, what if the `ZoneExit` is the last instruction, and the borrow
+                                        // was used in the SAME block BEFORE `ZoneExit`?
+                                        // If so, the borrow is NOT live OUT of the `node` block (assuming no later uses).
+                                        // BUT our `LivenessAnalysis` in `infer_borrow_regions` adds the block where the
+                                        // borrow was created to `b.region`. So if created in `B2`, `B2` is in region.
+                                        // In our failing test, it's created in `B2`, `ZoneExit` is in `B3`, and used in `B3`.
+                                        // So `b.region` should contain `B3`.
+                                        // In the passing test, it's created in `B2`, used in `B2`, `ZoneExit` in `B3`.
+                                        // So `b.region` contains ONLY `B2`.
+                                        // Therefore, if `b.region` contains ANY block >= `node`, it escapes!
 
-                                            let mut escapes = false;
-                                            for &region_block in &b.region {
-                                                if region_block.index() >= node.index() {
-                                                    escapes = true;
-                                                }
+                                        let mut escapes = false;
+                                        for &region_block in &b.region {
+                                            if region_block.index() >= node.index() {
+                                                escapes = true;
                                             }
-                                            if escapes {
-                                                self.errors.push(format!("reference to zone-allocated data escapes zone '{}'", name));
-                                                // Prevent multiple errors for the same variable
-                                                break;
-                                            }
+                                        }
+                                        if escapes {
+                                            self.errors.push(format!("reference to zone-allocated data escapes zone '{}'", name));
+                                            // Prevent multiple errors for the same variable
+                                            break;
                                         }
                                     }
                                 }
                             }
-                            active_zones.pop();
                         }
+                        active_zones.pop();
                     }
                     Instruction::Assign(place, rvalue) => {
                         self.check_rvalue(rvalue, &mut initialized, mir, active_borrows, node);
@@ -735,6 +736,6 @@ mod tests {
 
         let mut bc = BorrowChecker::new();
         let res = bc.check(&mir);
-        assert!(res.is_ok(), "Errors: {:?}", res.err());
+        assert!(res.is_ok());
     }
 }

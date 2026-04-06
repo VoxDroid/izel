@@ -245,4 +245,92 @@ mod tests {
         assert_eq!(eval_expr(&bit, &ctx), ConstValue::Int(2));
         assert_eq!(eval_expr(&unary, &ctx), ConstValue::Int(!0));
     }
+
+    #[test]
+    fn eval_covers_unknown_and_guard_branches() {
+        let ctx = std::collections::HashMap::new();
+
+        let int_div_zero = Expr::Binary(
+            BinaryOp::Div,
+            Box::new(Expr::Literal(Literal::Int(8))),
+            Box::new(Expr::Literal(Literal::Int(0))),
+        );
+        assert_eq!(eval_expr(&int_div_zero, &ctx), ConstValue::Unknown);
+
+        let int_rem_zero = Expr::Binary(
+            BinaryOp::Rem,
+            Box::new(Expr::Literal(Literal::Int(8))),
+            Box::new(Expr::Literal(Literal::Int(0))),
+        );
+        assert_eq!(eval_expr(&int_rem_zero, &ctx), ConstValue::Unknown);
+
+        let shl_oob = Expr::Binary(
+            BinaryOp::Shl,
+            Box::new(Expr::Literal(Literal::Int(1))),
+            Box::new(Expr::Literal(Literal::Int(128))),
+        );
+        assert_eq!(eval_expr(&shl_oob, &ctx), ConstValue::Unknown);
+
+        let shr_oob = Expr::Binary(
+            BinaryOp::Shr,
+            Box::new(Expr::Literal(Literal::Int(1))),
+            Box::new(Expr::Literal(Literal::Int(128))),
+        );
+        assert_eq!(eval_expr(&shr_oob, &ctx), ConstValue::Unknown);
+
+        let float_div_zero = Expr::Binary(
+            BinaryOp::Div,
+            Box::new(Expr::Literal(Literal::Float(1.0))),
+            Box::new(Expr::Literal(Literal::Float(0.0))),
+        );
+        assert_eq!(eval_expr(&float_div_zero, &ctx), ConstValue::Unknown);
+
+        let given_false_no_else = Expr::Given {
+            cond: Box::new(Expr::Literal(Literal::Bool(false))),
+            then_block: Block {
+                stmts: vec![],
+                expr: Some(Box::new(Expr::Literal(Literal::Int(1)))),
+                span: Span::dummy(),
+            },
+            else_expr: None,
+        };
+        assert_eq!(eval_expr(&given_false_no_else, &ctx), ConstValue::Nil);
+
+        let unsupported_unary_for_bool =
+            Expr::Unary(UnaryOp::Neg, Box::new(Expr::Literal(Literal::Bool(true))));
+        assert_eq!(
+            eval_expr(&unsupported_unary_for_bool, &ctx),
+            ConstValue::Unknown
+        );
+
+        let block_with_missing_init = Expr::Block(Block {
+            stmts: vec![Stmt::Let {
+                pat: Pattern::Ident("x".to_string(), false, Span::dummy()),
+                ty: None,
+                init: None,
+                span: Span::dummy(),
+            }],
+            expr: Some(Box::new(Expr::Ident("x".to_string(), Span::dummy()))),
+            span: Span::dummy(),
+        });
+        assert_eq!(
+            eval_expr(&block_with_missing_init, &ctx),
+            ConstValue::Unknown
+        );
+
+        let block_with_non_ident_pattern = Expr::Block(Block {
+            stmts: vec![Stmt::Let {
+                pat: Pattern::Tuple(vec![]),
+                ty: None,
+                init: Some(Expr::Literal(Literal::Int(1))),
+                span: Span::dummy(),
+            }],
+            expr: None,
+            span: Span::dummy(),
+        });
+        assert_eq!(
+            eval_expr(&block_with_non_ident_pattern, &ctx),
+            ConstValue::Unknown
+        );
+    }
 }

@@ -303,8 +303,38 @@ mod tests {
 
         formatter.format_node(&node);
 
-        assert!(formatter.output.contains(", \n") || formatter.output.contains(",\n"));
+        let has_comma_space_newline = formatter.output.contains(", \n");
+        let has_comma_newline = formatter.output.contains(",\n");
+        assert!(has_comma_space_newline || has_comma_newline);
         assert!(formatter.output.contains(";\n"));
+    }
+
+    #[test]
+    fn formatter_helpers_cover_space_newline_blankline_and_dedent_paths() {
+        let mut formatter = Formatter::new("x");
+
+        // push_space: one push when allowed, no duplicate spaces.
+        formatter.push_str("x");
+        formatter.push_space();
+        formatter.push_space();
+        assert!(formatter.output.ends_with("x "));
+
+        // push_newline: no-op when already newline, then write once when needed.
+        formatter.push_newline();
+        let before = formatter.output.clone();
+        formatter.push_newline();
+        assert_eq!(formatter.output, before);
+
+        // push_blank_line: add exactly one blank line and then keep stable.
+        formatter.push_blank_line();
+        let blank_once = formatter.output.clone();
+        formatter.push_blank_line();
+        assert_eq!(formatter.output, blank_once);
+
+        // dedent branch where indent level is > 0.
+        formatter.indent();
+        formatter.dedent();
+        assert_eq!(formatter.indent_level, 0);
     }
 
     #[test]

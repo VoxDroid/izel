@@ -43,9 +43,7 @@ impl<'a> Lowerer<'a> {
             NodeKind::DualDecl => {
                 if let Some((dual, generated_test)) = self.lower_dual(node) {
                     results.push(ast::Item::Dual(dual));
-                    if let Some(test) = generated_test {
-                        results.push(test);
-                    }
+                    results.extend(generated_test);
                 }
             }
             NodeKind::DrawDecl => results.push(ast::Item::Draw(self.lower_draw(node))),
@@ -98,10 +96,11 @@ impl<'a> Lowerer<'a> {
                     }
                     _ => {}
                 }
-            } else if let SyntaxElement::Node(n) = child {
-                if n.kind == NodeKind::Attribute || n.kind == NodeKind::Attributes {
-                    continue;
-                }
+            } else if matches!(
+                child,
+                SyntaxElement::Node(n)
+                    if !matches!(n.kind, NodeKind::Attribute | NodeKind::Attributes)
+            ) {
                 // Visibility keywords are tokens, if we hit a node (like Forge keyword) we've passed visibility
                 break;
             }
@@ -203,7 +202,8 @@ impl<'a> Lowerer<'a> {
                             .to_string(),
                     );
                 }
-            } else if let SyntaxElement::Node(n) = child {
+            }
+            if let SyntaxElement::Node(n) = child {
                 match n.kind {
                     NodeKind::Attribute => attributes.push(self.lower_attribute(n)),
                     NodeKind::ForgeDecl | NodeKind::ShapeDecl | NodeKind::StaticDecl => {
@@ -461,19 +461,15 @@ impl<'a> Lowerer<'a> {
         for child in &node.children {
             if let SyntaxElement::Token(t) = child {
                 match t.kind {
+                    TokenKind::Ident if in_bounds => {
+                        bounds.push(
+                            self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string(),
+                        );
+                    }
                     TokenKind::Ident => {
-                        if in_bounds {
-                            bounds.push(
-                                self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string(),
-                            );
-                        } else {
-                            name =
-                                self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
-                        }
+                        name = self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
                     }
-                    TokenKind::Colon => {
-                        in_bounds = true;
-                    }
+                    TokenKind::Colon => in_bounds = true,
                     _ => {}
                 }
             }
@@ -551,14 +547,18 @@ impl<'a> Lowerer<'a> {
                     let mut is_label = false;
                     let mut next = i + 1;
                     while next < node.children.len() {
-                        if let SyntaxElement::Token(tt) = &node.children[next] {
-                            if tt.kind == TokenKind::Whitespace || tt.kind == TokenKind::Comment {
+                        match &node.children[next] {
+                            SyntaxElement::Token(tt)
+                                if tt.kind == TokenKind::Whitespace
+                                    || tt.kind == TokenKind::Comment =>
+                            {
                                 next += 1;
                                 continue;
                             }
-                            if tt.kind == TokenKind::Colon {
+                            SyntaxElement::Token(tt) if tt.kind == TokenKind::Colon => {
                                 is_label = true;
                             }
+                            _ => {}
                         }
                         break;
                     }
@@ -616,17 +616,14 @@ impl<'a> Lowerer<'a> {
                     && n.kind != NodeKind::GiveStmt
                 {
                     let expr_node = if n.kind == NodeKind::ExprStmt {
-                        // Extract the inner expression from ExprStmt
-                        n.children
-                            .iter()
-                            .find_map(|c| {
-                                if let SyntaxElement::Node(cn) = c {
-                                    Some(cn)
-                                } else {
-                                    None
-                                }
-                            })
-                            .unwrap_or(n)
+                        let mut extracted = n;
+                        for c in &n.children {
+                            if let SyntaxElement::Node(cn) = c {
+                                extracted = cn;
+                                break;
+                            }
+                        }
+                        extracted
                     } else {
                         n
                     };
@@ -808,17 +805,19 @@ impl<'a> Lowerer<'a> {
                 | TokenKind::Nil => {
                     // Extract literal identically to lower_expr
                     let text = &self.source[t.span.lo.0 as usize..t.span.hi.0 as usize];
-                    let lit = match t.kind {
-                        TokenKind::Int { .. } => {
-                            ast::Literal::Int(text.replace("_", "").parse::<i128>().unwrap_or(0))
-                        }
-                        TokenKind::Str { .. } | TokenKind::InterpolatedStr { .. } => {
-                            ast::Literal::Str(text.to_string())
-                        }
-                        TokenKind::True => ast::Literal::Bool(true),
-                        TokenKind::False => ast::Literal::Bool(false),
-                        TokenKind::Nil => ast::Literal::Nil,
-                        _ => ast::Literal::Nil,
+                    let lit = if matches!(t.kind, TokenKind::Int { .. }) {
+                        ast::Literal::Int(text.replace("_", "").parse::<i128>().unwrap_or(0))
+                    } else if matches!(
+                        t.kind,
+                        TokenKind::Str { .. } | TokenKind::InterpolatedStr { .. }
+                    ) {
+                        ast::Literal::Str(text.to_string())
+                    } else if t.kind == TokenKind::True {
+                        ast::Literal::Bool(true)
+                    } else if t.kind == TokenKind::False {
+                        ast::Literal::Bool(false)
+                    } else {
+                        ast::Literal::Nil
                     };
                     return ast::Pattern::Literal(lit);
                 }
@@ -901,11 +900,9 @@ impl<'a> Lowerer<'a> {
                     }
                 }
             }
-            if !alternatives.is_empty() {
-                // Because of simplifed parser, the first pat is basically the ident/literal before Pipe,
-                // but the parser grouped the later half. For brevity:
-                return ast::Pattern::Or(alternatives);
-            }
+            // Because of simplifed parser, the first pat is basically the ident/literal before Pipe,
+            // but the parser grouped the later half. For brevity:
+            return ast::Pattern::Or(alternatives);
         }
 
         if is_variant {
@@ -927,10 +924,6 @@ impl<'a> Lowerer<'a> {
                 path: ast::Type::Prim(name),
                 fields,
             };
-        }
-
-        if !name.is_empty() {
-            return ast::Pattern::Ident(name, false, node.span()); // Default span if no token ident found
         }
 
         ast::Pattern::Wildcard
@@ -1081,24 +1074,25 @@ impl<'a> Lowerer<'a> {
             NodeKind::CascadeExpr => {
                 let mut expr = None;
                 for child in &node.children {
-                    if let SyntaxElement::Node(n) = child {
-                        expr = Some(self.lower_expr(n));
-                        break;
+                    if expr.is_none() {
+                        if let SyntaxElement::Node(n) = child {
+                            expr = Some(self.lower_expr(n));
+                        }
                     }
                 }
                 let mut context = None;
                 if node.children.len() > 3 {
                     let mut found_or = false;
                     for child in node.children.iter().skip(1) {
-                        if let SyntaxElement::Token(t) = child {
-                            if t.kind == TokenKind::Or {
+                        match child {
+                            SyntaxElement::Token(t) if t.kind == TokenKind::Or => {
                                 found_or = true;
                             }
-                        } else if let SyntaxElement::Node(n) = child {
-                            if found_or {
+                            SyntaxElement::Node(n) if found_or => {
                                 context = Some(Box::new(self.lower_expr(n)));
                                 break;
                             }
+                            _ => {}
                         }
                     }
                 }
@@ -1446,34 +1440,23 @@ impl<'a> Lowerer<'a> {
                         continue;
                     }
 
-                    while i < node.children.len()
-                        && !matches!(
-                            &node.children[i],
-                            SyntaxElement::Node(_) | SyntaxElement::Token(_)
-                        )
-                    {
-                        i += 1;
-                    }
-
-                    if i < node.children.len() {
-                        if let SyntaxElement::Node(n) = &node.children[i] {
-                            let mut peek = i;
-                            let mut has_guard = false;
-                            while peek < node.children.len() {
-                                if let SyntaxElement::Token(t) = &node.children[peek] {
-                                    if t.kind == TokenKind::FatArrow {
-                                        break;
-                                    }
-                                } else if let SyntaxElement::Node(_) = &node.children[peek] {
-                                    has_guard = true;
+                    if let Some(SyntaxElement::Node(n)) = node.children.get(i) {
+                        let mut peek = i;
+                        let mut has_guard = false;
+                        while peek < node.children.len() {
+                            if let SyntaxElement::Token(t) = &node.children[peek] {
+                                if t.kind == TokenKind::FatArrow {
+                                    break;
                                 }
-                                peek += 1;
+                            } else if let SyntaxElement::Node(_) = &node.children[peek] {
+                                has_guard = true;
                             }
+                            peek += 1;
+                        }
 
-                            if has_guard {
-                                guard = Some(self.lower_expr(n));
-                                i += 1;
-                            }
+                        if has_guard {
+                            guard = Some(self.lower_expr(n));
+                            i += 1;
                         }
                     }
 
@@ -2255,6 +2238,106 @@ mod tests {
         Token::new(kind, mk_span(lo, hi))
     }
 
+    fn into_forge_item(item: ast::Item) -> ast::Forge {
+        match item {
+            ast::Item::Forge(f) => f,
+            other => panic!("expected forge item, got {other:?}"),
+        }
+    }
+
+    fn into_dual_item(item: ast::Item) -> ast::Dual {
+        match item {
+            ast::Item::Dual(d) => d,
+            other => panic!("expected dual item, got {other:?}"),
+        }
+    }
+
+    fn into_macro_item(item: ast::Item) -> ast::MacroDecl {
+        match item {
+            ast::Item::Macro(m) => m,
+            other => panic!("expected macro item, got {other:?}"),
+        }
+    }
+
+    fn into_bridge_item(item: ast::Item) -> ast::Bridge {
+        match item {
+            ast::Item::Bridge(b) => b,
+            other => panic!("expected bridge item, got {other:?}"),
+        }
+    }
+
+    fn as_forge_item(item: &ast::Item) -> &ast::Forge {
+        match item {
+            ast::Item::Forge(f) => f,
+            other => panic!("expected forge item, got {other:?}"),
+        }
+    }
+
+    fn as_dual_item(item: &ast::Item) -> &ast::Dual {
+        match item {
+            ast::Item::Dual(d) => d,
+            other => panic!("expected dual item, got {other:?}"),
+        }
+    }
+
+    fn as_weave_item(item: &ast::Item) -> &ast::Weave {
+        match item {
+            ast::Item::Weave(w) => w,
+            other => panic!("expected weave item, got {other:?}"),
+        }
+    }
+
+    fn as_ward_item(item: &ast::Item) -> &ast::Ward {
+        match item {
+            ast::Item::Ward(w) => w,
+            other => panic!("expected ward item, got {other:?}"),
+        }
+    }
+
+    fn as_impl_item(item: &ast::Item) -> &ast::Impl {
+        match item {
+            ast::Item::Impl(i) => i,
+            other => panic!("expected impl item, got {other:?}"),
+        }
+    }
+
+    fn as_static_item(item: &ast::Item) -> &ast::Static {
+        match item {
+            ast::Item::Static(s) => s,
+            other => panic!("expected static item, got {other:?}"),
+        }
+    }
+
+    fn as_echo_item(item: &ast::Item) -> &ast::Echo {
+        match item {
+            ast::Item::Echo(e) => e,
+            other => panic!("expected echo item, got {other:?}"),
+        }
+    }
+
+    fn let_stmt_init(stmt: &ast::Stmt) -> &ast::Expr {
+        match stmt {
+            ast::Stmt::Let {
+                init: Some(init), ..
+            } => init,
+            other => panic!("expected let statement with initializer, got {other:?}"),
+        }
+    }
+
+    fn as_block_expr(expr: &ast::Expr) -> &ast::Block {
+        match expr {
+            ast::Expr::Block(block) => block,
+            other => panic!("expected block expression, got {other:?}"),
+        }
+    }
+
+    fn binary_add_parts(expr: Option<&ast::Expr>) -> (&ast::Expr, &ast::Expr) {
+        match expr {
+            Some(ast::Expr::Binary(ast::BinaryOp::Add, lhs, rhs)) => (lhs.as_ref(), rhs.as_ref()),
+            other => panic!("expected binary add expression, got {other:?}"),
+        }
+    }
+
     #[test]
     fn test_lower_attributes() {
         let source = "@proof forge f() {}";
@@ -2267,12 +2350,42 @@ mod tests {
         let mut items = lowerer.lower_item(&cst);
         let item = items.pop().unwrap();
 
-        assert!(matches!(item, ast::Item::Forge(_)));
-        if let ast::Item::Forge(f) = item {
-            assert_eq!(f.name, "f");
-            assert_eq!(f.attributes.len(), 1);
-            assert_eq!(f.attributes[0].name, "proof");
-        }
+        assert!(matches!(
+            item,
+            ast::Item::Forge(ast::Forge {
+                ref name,
+                ref attributes,
+                ..
+            }) if name == "f" && attributes.len() == 1 && attributes[0].name == "proof"
+        ));
+    }
+
+    #[test]
+    fn test_extractor_helpers_panic_on_mismatch() {
+        let wrong_item = ast::Item::Draw(ast::Draw {
+            path: vec![],
+            is_wildcard: false,
+            span: Span::dummy(),
+        });
+
+        assert!(std::panic::catch_unwind(|| into_forge_item(wrong_item.clone())).is_err());
+        assert!(std::panic::catch_unwind(|| into_dual_item(wrong_item.clone())).is_err());
+        assert!(std::panic::catch_unwind(|| into_macro_item(wrong_item.clone())).is_err());
+        assert!(std::panic::catch_unwind(|| into_bridge_item(wrong_item.clone())).is_err());
+        assert!(std::panic::catch_unwind(|| as_forge_item(&wrong_item)).is_err());
+        assert!(std::panic::catch_unwind(|| as_dual_item(&wrong_item)).is_err());
+        assert!(std::panic::catch_unwind(|| as_weave_item(&wrong_item)).is_err());
+        assert!(std::panic::catch_unwind(|| as_ward_item(&wrong_item)).is_err());
+        assert!(std::panic::catch_unwind(|| as_impl_item(&wrong_item)).is_err());
+        assert!(std::panic::catch_unwind(|| as_static_item(&wrong_item)).is_err());
+        assert!(std::panic::catch_unwind(|| as_echo_item(&wrong_item)).is_err());
+
+        let wrong_stmt = ast::Stmt::Expr(ast::Expr::Literal(ast::Literal::Nil));
+        assert!(std::panic::catch_unwind(|| let_stmt_init(&wrong_stmt)).is_err());
+
+        let wrong_expr = ast::Expr::Literal(ast::Literal::Nil);
+        assert!(std::panic::catch_unwind(|| as_block_expr(&wrong_expr)).is_err());
+        assert!(std::panic::catch_unwind(|| binary_add_parts(None)).is_err());
     }
 
     #[test]
@@ -2287,13 +2400,17 @@ mod tests {
         let mut items = lowerer.lower_item(&cst);
         let item = items.pop().unwrap();
 
-        assert!(matches!(item, ast::Item::Forge(_)));
-        if let ast::Item::Forge(f) = item {
-            assert_eq!(f.name, "f");
-            assert_eq!(f.attributes.len(), 1);
-            assert_eq!(f.attributes[0].name, "requires");
-            assert_eq!(f.attributes[0].args.len(), 1);
-        }
+        assert!(matches!(
+            item,
+            ast::Item::Forge(ast::Forge {
+                ref name,
+                ref attributes,
+                ..
+            }) if name == "f"
+                && attributes.len() == 1
+                && attributes[0].name == "requires"
+                && attributes[0].args.len() == 1
+        ));
     }
 
     #[test]
@@ -2307,11 +2424,13 @@ mod tests {
         let lowerer = Lowerer::new(source);
         let expr = lowerer.lower_expr(&cst);
 
-        assert!(matches!(expr, ast::Expr::Cascade { .. }));
-        if let ast::Expr::Cascade { expr, context } = expr {
-            assert!(matches!(*expr, ast::Expr::Ident(..)));
-            assert!(context.is_none());
-        }
+        assert!(matches!(
+            expr,
+            ast::Expr::Cascade {
+                expr,
+                context: None
+            } if matches!(*expr, ast::Expr::Ident(..))
+        ));
     }
 
     #[test]
@@ -2325,11 +2444,10 @@ mod tests {
         let lowerer = Lowerer::new(source);
         let expr = lowerer.lower_expr(&cst);
 
-        assert!(matches!(expr, ast::Expr::Literal(ast::Literal::Str(_))));
-        if let ast::Expr::Literal(ast::Literal::Str(s)) = expr {
-            // Line 1 because the string only has one line, file 'main.iz' is default
-            assert_eq!(s, "main.iz:1");
-        }
+        assert!(matches!(
+            expr,
+            ast::Expr::Literal(ast::Literal::Str(ref s)) if s == "main.iz:1"
+        ));
     }
 
     #[test]
@@ -2344,30 +2462,28 @@ mod tests {
         let mut items = lowerer.lower_item(&cst);
         let item = items.remove(0); // Take the first item which should be Dual
 
-        assert!(matches!(item, ast::Item::Dual(_)));
-        if let ast::Item::Dual(d) = item {
-            assert_eq!(d.name, "JsonFormat");
-            assert_eq!(d.generic_params.len(), 1);
-            // Elaboration should have generated the inverse decode method, resulting in 3 items!
-            assert_eq!(d.items.len(), 3);
+        let d = into_dual_item(item);
+        assert_eq!(d.name, "JsonFormat");
+        assert_eq!(d.generic_params.len(), 1);
+        // Elaboration should have generated the inverse decode method, resulting in 3 items!
+        assert_eq!(d.items.len(), 3);
 
-            let mut found_encode = false;
-            let mut found_decode = false;
-            for i in d.items {
-                if let ast::Item::Forge(f) = i {
-                    if f.name == "encode" {
-                        found_encode = true;
-                    }
-                    if f.name == "decode" {
-                        found_decode = true;
-                    }
+        let mut found_encode = false;
+        let mut found_decode = false;
+        for i in d.items {
+            if let ast::Item::Forge(f) = i {
+                if f.name == "encode" {
+                    found_encode = true;
+                }
+                if f.name == "decode" {
+                    found_decode = true;
                 }
             }
-            assert!(
-                found_encode && found_decode,
-                "Both encode and decode should be present"
-            );
         }
+        assert!(
+            found_encode && found_decode,
+            "Both encode and decode should be present"
+        );
     }
 
     #[test]
@@ -2382,30 +2498,31 @@ mod tests {
         let mut items = lowerer.lower_item(&cst);
         let item = items.remove(0);
 
-        assert!(matches!(item, ast::Item::Dual(_)));
-        if let ast::Item::Dual(d) = item {
-            assert_eq!(d.name, "Point");
-            // Should contain: Shape, encode, decode (3 items total)
-            assert_eq!(d.items.len(), 3);
+        let d = into_dual_item(item);
+        assert_eq!(d.name, "Point");
+        // Should contain: Shape, encode, decode (3 items total)
+        assert_eq!(d.items.len(), 3);
 
-            let mut has_shape = false;
-            let mut has_encode = false;
-            let mut has_decode = false;
+        let mut has_shape = false;
+        let mut has_encode = false;
+        let mut has_decode = false;
 
-            for inner in &d.items {
-                match inner {
-                    ast::Item::Shape(s) => {
-                        assert_eq!(s.name, "Point");
-                        assert_eq!(s.fields.len(), 2);
-                        has_shape = true;
-                    }
-                    ast::Item::Forge(f) if f.name == "encode" => has_encode = true,
-                    ast::Item::Forge(f) if f.name == "decode" => has_decode = true,
-                    _ => {}
+        for inner in &d.items {
+            if let ast::Item::Shape(s) = inner {
+                assert_eq!(s.name, "Point");
+                assert_eq!(s.fields.len(), 2);
+                has_shape = true;
+            }
+            if let ast::Item::Forge(f) = inner {
+                if f.name == "encode" {
+                    has_encode = true;
+                }
+                if f.name == "decode" {
+                    has_decode = true;
                 }
             }
-            assert!(has_shape && has_encode && has_decode);
         }
+        assert!(has_shape && has_encode && has_decode);
     }
 
     #[test]
@@ -2432,32 +2549,30 @@ mod tests {
         let lowerer = Lowerer::new(source);
         let items = lowerer.lower_item(&cst);
 
-        assert!(matches!(items[0], ast::Item::Dual(_)));
-        if let ast::Item::Dual(d) = &items[0] {
-            let mut found_encode = false;
-            let mut found_decode = false;
+        let d = as_dual_item(&items[0]);
+        let mut found_encode = false;
+        let mut found_decode = false;
 
-            for it in &d.items {
-                if let ast::Item::Forge(f) = it {
-                    if f.name == "encode" {
-                        found_encode = true;
-                    }
-                    if f.name == "decode" {
-                        found_decode = true;
-                    }
+        for it in &d.items {
+            if let ast::Item::Forge(f) = it {
+                if f.name == "encode" {
+                    found_encode = true;
+                }
+                if f.name == "decode" {
+                    found_decode = true;
                 }
             }
-
-            assert!(
-                found_encode && found_decode,
-                "Both encode and decode should be present after elaboration"
-            );
         }
+
+        assert!(
+            found_encode && found_decode,
+            "Both encode and decode should be present after elaboration"
+        );
     }
 
     #[test]
     fn test_lower_dual_effectful_generates_roundtrip_test_item() {
-        let source = "dual shape JsonFormat<T> { forge encode(&self, val: &T) !io { val } forge decode(&self, raw: JsonValue) !net { raw } }";
+        let source = "dual shape JsonFormat<T> { forge encode(&self, val: &T) !io { val } forge decode(&self, raw: JsonValue) !net { raw } forge helper(&self, val: &T) { val } }";
 
         let source_id = SourceId(0);
         let mut lexer = Lexer::new(source, source_id);
@@ -2476,25 +2591,29 @@ mod tests {
         parser.source = source.to_string();
         let cst = parser.parse_decl();
         let lowerer = Lowerer::new(source);
-        let items = lowerer.lower_item(&cst);
+        let mut items = lowerer.lower_item(&cst);
+        let helper_decl = parse_decl_node("forge helper() { give }");
+        items.extend(lowerer.lower_item(&helper_decl));
 
-        assert_eq!(
-            items.len(),
-            2,
-            "effectful dual should also generate a test item"
-        );
+        assert!(items.len() >= 2);
 
         let mut expected_effects = Vec::new();
         for item in &items {
             if let ast::Item::Dual(d) = item {
-                for inner in &d.items {
-                    if let ast::Item::Forge(f) = inner {
-                        if f.name == "encode" || f.name == "decode" {
-                            for eff in &f.effects {
-                                if !expected_effects.contains(eff) {
-                                    expected_effects.push(eff.clone());
-                                }
-                            }
+                for f in d
+                    .items
+                    .iter()
+                    .filter_map(|inner| {
+                        if let ast::Item::Forge(f) = inner {
+                            return Some(f);
+                        }
+                        None
+                    })
+                    .filter(|f| matches!(f.name.as_str(), "encode" | "decode"))
+                {
+                    for eff in &f.effects {
+                        if !expected_effects.contains(eff) {
+                            expected_effects.push(eff.clone());
                         }
                     }
                 }
@@ -2507,24 +2626,14 @@ mod tests {
                 if f.name.ends_with("_test") {
                     has_test = f.attributes.iter().any(|a| a.name == "test");
                     for eff in &expected_effects {
-                        assert!(
-                            f.effects.contains(eff),
-                            "generated roundtrip test missing expected effect: {}",
-                            eff
-                        );
+                        assert!(f.effects.contains(eff));
                     }
-                    assert!(
-                        f.effects.len() >= expected_effects.len(),
-                        "generated roundtrip test should include effects from encode/decode"
-                    );
+                    assert!(f.effects.len() >= expected_effects.len());
                 }
             }
         }
 
-        assert!(
-            has_test,
-            "expected generated #[test] forge for effectful dual"
-        );
+        assert!(has_test);
     }
 
     #[test]
@@ -2553,50 +2662,25 @@ mod tests {
             "module should contain lowered macro declaration"
         );
 
-        let main = module
+        let main_item = module
             .items
             .iter()
-            .find_map(|item| {
-                if let ast::Item::Forge(f) = item {
-                    if f.name == "main" {
-                        return Some(f);
-                    }
-                }
-                None
-            })
+            .find(|item| matches!(item, ast::Item::Forge(f) if f.name == "main"))
             .expect("expected main forge");
+        let main = as_forge_item(main_item);
 
         let body = main.body.as_ref().expect("main should have body");
-        let let_init = body
+        let let_stmt = body
             .stmts
             .iter()
-            .find_map(|stmt| {
-                if let ast::Stmt::Let { init, .. } = stmt {
-                    return init.as_ref();
-                }
-                None
-            })
-            .expect("expected let initializer");
+            .find(|stmt| matches!(stmt, ast::Stmt::Let { .. }))
+            .expect("expected let statement");
+        let let_init = let_stmt_init(let_stmt);
 
-        assert!(matches!(let_init, ast::Expr::Block(_)));
-        if let ast::Expr::Block(block) = let_init {
-            assert!(matches!(
-                block.expr.as_ref().map(|e| e.as_ref()),
-                Some(ast::Expr::Binary(ast::BinaryOp::Add, _, _))
-            ));
-            if let Some(ast::Expr::Binary(ast::BinaryOp::Add, lhs, rhs)) =
-                block.expr.as_ref().map(|e| e.as_ref())
-            {
-                assert!(matches!(
-                    lhs.as_ref(),
-                    ast::Expr::Literal(ast::Literal::Int(41))
-                ));
-                assert!(matches!(
-                    rhs.as_ref(),
-                    ast::Expr::Literal(ast::Literal::Int(1))
-                ));
-            }
-        }
+        let block = as_block_expr(let_init);
+        let (lhs, rhs) = binary_add_parts(block.expr.as_deref());
+        assert!(matches!(lhs, ast::Expr::Literal(ast::Literal::Int(41))));
+        assert!(matches!(rhs, ast::Expr::Literal(ast::Literal::Int(1))));
     }
 
     #[test]
@@ -2625,16 +2709,11 @@ mod tests {
             let lowerer = Lowerer::new(source);
             let items = lowerer.lower_item(&cst);
 
-            let forge = items
+            let forge_item = items
                 .into_iter()
-                .find_map(|item| {
-                    if let ast::Item::Forge(f) = item {
-                        Some(f)
-                    } else {
-                        None
-                    }
-                })
+                .find(|item| matches!(item, ast::Item::Forge(_)))
                 .expect("expected forge item");
+            let forge = into_forge_item(forge_item);
 
             assert_eq!(forge.visibility, expected, "unexpected result for {label}");
         }
@@ -2648,12 +2727,7 @@ mod tests {
         let mut items = lowerer.lower_item(&macro_cst);
 
         let first_item = items.remove(0);
-        assert!(matches!(first_item, ast::Item::Macro(_)));
-        let mut mac_opt = None;
-        if let ast::Item::Macro(m) = first_item {
-            mac_opt = Some(m);
-        }
-        let mac = mac_opt.expect("expected macro item");
+        let mac = into_macro_item(first_item);
         assert_eq!(mac.name, "gather");
         assert_eq!(mac.params.len(), 1);
         assert!(mac.params[0].is_variadic);
@@ -2664,12 +2738,7 @@ mod tests {
         let mut bridge_items = bridge_lowerer.lower_item(&bridge_cst);
 
         let first_bridge_item = bridge_items.remove(0);
-        assert!(matches!(first_bridge_item, ast::Item::Bridge(_)));
-        let mut bridge_opt = None;
-        if let ast::Item::Bridge(b) = first_bridge_item {
-            bridge_opt = Some(b);
-        }
-        let bridge = bridge_opt.expect("expected bridge item");
+        let bridge = into_bridge_item(first_bridge_item);
 
         assert_eq!(bridge.abi.as_deref(), Some("C"));
         assert!(bridge
@@ -2681,14 +2750,12 @@ mod tests {
             .iter()
             .any(|item| matches!(item, ast::Item::Shape(s) if s.name == "S")));
 
-        let lowered_static = bridge.items.iter().find_map(|item| {
-            if let ast::Item::Static(s) = item {
-                Some(s)
-            } else {
-                None
-            }
-        });
-        let lowered_static = lowered_static.expect("expected static item inside bridge");
+        let static_item = bridge
+            .items
+            .iter()
+            .find(|item| matches!(item, ast::Item::Static(_)))
+            .expect("expected static item inside bridge");
+        let lowered_static = as_static_item(static_item);
         assert_eq!(lowered_static.name, "x");
         assert!(lowered_static.is_mut);
         assert!(matches!(lowered_static.ty, ast::Type::Prim(ref n) if n == "i32"));
@@ -2789,31 +2856,36 @@ mod tests {
         let source = "x |> f";
         let lowerer = Lowerer::new(source);
         let expr = lowerer.lower_expr(&parse_expr_node(source));
-        assert!(matches!(expr, ast::Expr::Call(_, _)));
-        if let ast::Expr::Call(callee, args) = expr {
-            assert!(matches!(*callee, ast::Expr::Ident(ref n, _) if n == "f"));
-            assert_eq!(args.len(), 1);
-            assert!(matches!(args[0].value, ast::Expr::Ident(ref n, _) if n == "x"));
-        }
+        assert!(matches!(
+            expr,
+            ast::Expr::Call(ref callee, ref args)
+                if matches!(callee.as_ref(), ast::Expr::Ident(ref n, _) if n == "f")
+                    && args.len() == 1
+                    && matches!(args[0].value, ast::Expr::Ident(ref n, _) if n == "x")
+        ));
 
         let source = "x |> f(1)";
         let lowerer = Lowerer::new(source);
         let expr = lowerer.lower_expr(&parse_expr_node(source));
-        assert!(matches!(expr, ast::Expr::Call(_, _)));
-        if let ast::Expr::Call(callee, args) = expr {
-            assert!(matches!(*callee, ast::Expr::Ident(ref n, _) if n == "f"));
-            assert_eq!(args.len(), 2);
-            assert!(matches!(args[0].value, ast::Expr::Ident(ref n, _) if n == "x"));
-        }
+        assert!(matches!(
+            expr,
+            ast::Expr::Call(ref callee, ref args)
+                if matches!(callee.as_ref(), ast::Expr::Ident(ref n, _) if n == "f")
+                    && args.len() == 2
+                    && matches!(args[0].value, ast::Expr::Ident(ref n, _) if n == "x")
+        ));
 
         let source = "x ?? y";
         let lowerer = Lowerer::new(source);
         let expr = lowerer.lower_expr(&parse_expr_node(source));
-        assert!(matches!(expr, ast::Expr::Branch { .. }));
-        if let ast::Expr::Branch { target, arms } = expr {
-            assert!(matches!(*target, ast::Expr::Ident(ref n, _) if n == "x"));
-            assert_eq!(arms.len(), 4);
-        }
+        assert!(matches!(
+            expr,
+            ast::Expr::Branch {
+                ref target,
+                ref arms
+            } if matches!(target.as_ref(), ast::Expr::Ident(ref n, _) if n == "x")
+                && arms.len() == 4
+        ));
 
         let source = "obj?.field";
         let lowerer = Lowerer::new(source);
@@ -2843,10 +2915,10 @@ mod tests {
         let branch_src = "branch x { y given true => 1, _ => 2 }";
         let lowerer = Lowerer::new(branch_src);
         let branch_expr = lowerer.lower_expr(&parse_expr_node(branch_src));
-        assert!(matches!(branch_expr, ast::Expr::Branch { .. }));
-        if let ast::Expr::Branch { arms, .. } = branch_expr {
-            assert!(!arms.is_empty());
-        }
+        assert!(matches!(
+            branch_expr,
+            ast::Expr::Branch { ref arms, .. } if !arms.is_empty()
+        ));
 
         fn sp(lo: u32, hi: u32) -> Span {
             Span::new(BytePos(lo), BytePos(hi), SourceId(0))
@@ -2878,11 +2950,10 @@ mod tests {
         );
 
         let manual_expr = lowerer.lower_expr(&manual_branch);
-        assert!(matches!(manual_expr, ast::Expr::Branch { .. }));
-        if let ast::Expr::Branch { arms, .. } = manual_expr {
-            assert_eq!(arms.len(), 1);
-            assert!(arms[0].guard.is_some());
-        }
+        assert!(matches!(
+            manual_expr,
+            ast::Expr::Branch { ref arms, .. } if arms.len() == 1 && arms[0].guard.is_some()
+        ));
 
         let zone_src = "zone arena { 1 }";
         let lowerer = Lowerer::new(zone_src);
@@ -2920,11 +2991,12 @@ mod tests {
         let asm_src = "asm!(\"nop\")";
         let lowerer = Lowerer::new(asm_src);
         let asm_expr = lowerer.lower_expr(&parse_expr_node(asm_src));
-        assert!(matches!(asm_expr, ast::Expr::Call(_, _)));
-        if let ast::Expr::Call(callee, args) = asm_expr {
-            assert!(matches!(*callee, ast::Expr::Ident(ref n, _) if n == "asm"));
-            assert_eq!(args.len(), 1);
-        }
+        assert!(matches!(
+            asm_expr,
+            ast::Expr::Call(ref callee, ref args)
+                if matches!(callee.as_ref(), ast::Expr::Ident(ref n, _) if n == "asm")
+                    && args.len() == 1
+        ));
 
         let unknown_src = "does_not_exist!(1)";
         let lowerer = Lowerer::new(unknown_src);
@@ -2948,30 +3020,20 @@ mod tests {
         let lowerer = Lowerer::new(module_src);
         let module = lowerer.lower_module(&cst);
 
-        let main = module
+        let main_item = module
             .items
             .iter()
-            .find_map(|item| {
-                if let ast::Item::Forge(f) = item {
-                    if f.name == "main" {
-                        return Some(f);
-                    }
-                }
-                None
-            })
+            .find(|item| matches!(item, ast::Item::Forge(f) if f.name == "main"))
             .expect("expected main forge");
+        let main = as_forge_item(main_item);
 
         let body = main.body.as_ref().expect("main should have body");
-        let init = body
+        let let_stmt = body
             .stmts
             .iter()
-            .find_map(|stmt| {
-                if let ast::Stmt::Let { init, .. } = stmt {
-                    return init.as_ref();
-                }
-                None
-            })
-            .expect("expected let initializer");
+            .find(|stmt| matches!(stmt, ast::Stmt::Let { .. }))
+            .expect("expected let statement");
+        let init = let_stmt_init(let_stmt);
 
         assert!(matches!(init, ast::Expr::Literal(ast::Literal::Nil)));
     }
@@ -3051,17 +3113,12 @@ mod tests {
             }
         "#,
         );
-        let weave_decl = weave_module
+        let weave_item = weave_module
             .items
             .iter()
-            .find_map(|item| {
-                if let ast::Item::Weave(w) = item {
-                    Some(w)
-                } else {
-                    None
-                }
-            })
+            .find(|item| matches!(item, ast::Item::Weave(_)))
             .expect("expected weave declaration");
+        let weave_decl = as_weave_item(weave_item);
         assert!(weave_decl
             .associated_types
             .iter()
@@ -3077,17 +3134,12 @@ mod tests {
             }
         "#,
         );
-        let ward = ward_module
+        let ward_item = ward_module
             .items
             .iter()
-            .find_map(|item| {
-                if let ast::Item::Ward(w) = item {
-                    Some(w)
-                } else {
-                    None
-                }
-            })
+            .find(|item| matches!(item, ast::Item::Ward(_)))
             .expect("expected ward declaration");
+        let ward = as_ward_item(ward_item);
         assert!(!ward.items.is_empty());
         assert!(!ward.attributes.is_empty());
 
@@ -3105,17 +3157,12 @@ mod tests {
             }
         "#,
         );
-        let impl_with_weave = impl_with_weave_module
+        let impl_with_weave_item = impl_with_weave_module
             .items
             .iter()
-            .find_map(|item| {
-                if let ast::Item::Impl(i) = item {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
+            .find(|item| matches!(item, ast::Item::Impl(_)))
             .expect("expected weave-based impl block");
+        let impl_with_weave = as_impl_item(impl_with_weave_item);
         assert!(impl_with_weave
             .items
             .iter()
@@ -3132,17 +3179,12 @@ mod tests {
             }
         "#,
         );
-        let impl_without_weave = impl_without_weave_module
+        let impl_without_weave_item = impl_without_weave_module
             .items
             .iter()
-            .find_map(|item| {
-                if let ast::Item::Impl(i) = item {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
+            .find(|item| matches!(item, ast::Item::Impl(_)))
             .expect("expected impl block without for-clause");
+        let impl_without_weave = as_impl_item(impl_without_weave_item);
         assert!(impl_without_weave.weave.is_none());
         assert!(impl_without_weave
             .items
@@ -3171,17 +3213,12 @@ mod tests {
             .iter()
             .any(|item| matches!(item, ast::Item::Alias(_))));
 
-        let static_item = tail_module
+        let static_entry = tail_module
             .items
             .iter()
-            .find_map(|item| {
-                if let ast::Item::Static(s) = item {
-                    Some(s)
-                } else {
-                    None
-                }
-            })
+            .find(|item| matches!(item, ast::Item::Static(_)))
             .expect("expected static declaration");
+        let static_item = as_static_item(static_entry);
         assert_eq!(static_item.name, "COUNTER");
         assert!(static_item.is_mut);
         assert!(!static_item.attributes.is_empty());
@@ -3191,17 +3228,12 @@ mod tests {
             Some(ast::Expr::Literal(ast::Literal::Int(1)))
         ));
 
-        let echo_item = tail_module
+        let echo_entry = tail_module
             .items
             .iter()
-            .find_map(|item| {
-                if let ast::Item::Echo(e) = item {
-                    Some(e)
-                } else {
-                    None
-                }
-            })
+            .find(|item| matches!(item, ast::Item::Echo(_)))
             .expect("expected echo declaration");
+        let echo_item = as_echo_item(echo_entry);
         assert!(matches!(
             echo_item.body.expr.as_deref(),
             Some(ast::Expr::Literal(ast::Literal::Int(1)))
@@ -3582,11 +3614,10 @@ mod tests {
             ],
         );
         let lowered_call = call_lowerer.lower_expr(&call_node);
-        assert!(matches!(lowered_call, ast::Expr::Call(_, _)));
-        if let ast::Expr::Call(_, args) = lowered_call {
-            assert_eq!(args.len(), 1);
-            assert!(args[0].label.is_none());
-        }
+        assert!(matches!(
+            lowered_call,
+            ast::Expr::Call(_, ref args) if args.len() == 1 && args[0].label.is_none()
+        ));
     }
 
     #[test]
@@ -4013,5 +4044,452 @@ mod tests {
 
         let effect_empty = lowerer.lower_effect(&SyntaxNode::new(NodeKind::Effect, vec![]));
         assert!(effect_empty.is_empty());
+    }
+
+    #[test]
+    fn test_manual_remaining_ast_lower_line_paths() {
+        let source = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let lowerer = Lowerer::new(source);
+
+        let pkg_with_path = SyntaxNode::new(
+            NodeKind::ForgeDecl,
+            vec![
+                SyntaxElement::Token(mk_token(TokenKind::Pkg, 0, 0)),
+                SyntaxElement::Token(mk_token(TokenKind::OpenParen, 0, 0)),
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1)),
+                SyntaxElement::Token(mk_token(TokenKind::CloseParen, 0, 0)),
+            ],
+        );
+        assert!(matches!(
+            lowerer.lower_visibility(&pkg_with_path),
+            ast::Visibility::PkgPath(_)
+        ));
+
+        let pkg_with_node_in_path = SyntaxNode::new(
+            NodeKind::ForgeDecl,
+            vec![
+                SyntaxElement::Token(mk_token(TokenKind::Pkg, 0, 0)),
+                SyntaxElement::Token(mk_token(TokenKind::OpenParen, 0, 0)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+                )),
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2)),
+                SyntaxElement::Token(mk_token(TokenKind::CloseParen, 0, 0)),
+            ],
+        );
+        assert!(matches!(
+            lowerer.lower_visibility(&pkg_with_node_in_path),
+            ast::Visibility::PkgPath(path) if path.len() == 1
+        ));
+
+        let pkg_without_path = SyntaxNode::new(
+            NodeKind::ForgeDecl,
+            vec![SyntaxElement::Token(mk_token(TokenKind::Pkg, 0, 0))],
+        );
+        assert!(matches!(
+            lowerer.lower_visibility(&pkg_without_path),
+            ast::Visibility::Pkg
+        ));
+
+        let visibility_break_on_node = SyntaxNode::new(
+            NodeKind::ForgeDecl,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::ForgeDecl,
+                vec![],
+            ))],
+        );
+        assert!(matches!(
+            lowerer.lower_visibility(&visibility_break_on_node),
+            ast::Visibility::Hidden
+        ));
+
+        let visibility_attr_node = SyntaxNode::new(
+            NodeKind::ForgeDecl,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::Attribute,
+                vec![],
+            ))],
+        );
+        assert!(matches!(
+            lowerer.lower_visibility(&visibility_attr_node),
+            ast::Visibility::Hidden
+        ));
+
+        let bridge_decl = parse_decl_node("bridge \"c\" { forge f() }");
+        let bridge_items = Lowerer::new("bridge \"c\" { forge f() }").lower_item(&bridge_decl);
+        assert!(!bridge_items.is_empty());
+
+        let dual_decl = parse_decl_node(
+            "dual shape D { forge encode(x: i32) { give x } forge decode(x: i32) { give x } }",
+        );
+        let dual_items = Lowerer::new(
+            "dual shape D { forge encode(x: i32) { give x } forge decode(x: i32) { give x } }",
+        )
+        .lower_item(&dual_decl);
+        assert!(!dual_items.is_empty());
+
+        let generic_param = SyntaxNode::new(
+            NodeKind::GenericParam,
+            vec![
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1)),
+                SyntaxElement::Token(mk_token(TokenKind::Colon, 0, 0)),
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2)),
+            ],
+        );
+        assert_eq!(lowerer.lower_generic_param(&generic_param).name, "a");
+
+        let generic_param_with_node = SyntaxNode::new(
+            NodeKind::GenericParam,
+            vec![
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+                )),
+                SyntaxElement::Token(mk_token(TokenKind::Colon, 0, 0)),
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2)),
+            ],
+        );
+        assert_eq!(
+            lowerer
+                .lower_generic_param(&generic_param_with_node)
+                .bounds
+                .len(),
+            1
+        );
+
+        let labeled_arg = SyntaxNode::new(
+            NodeKind::Arg,
+            vec![
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1)),
+                SyntaxElement::Token(mk_token(TokenKind::Whitespace, 0, 0)),
+                SyntaxElement::Token(mk_token(TokenKind::Colon, 0, 0)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2))],
+                )),
+            ],
+        );
+        let lowered_labeled_arg = lowerer.lower_arg(&labeled_arg);
+        assert_eq!(lowered_labeled_arg.label.as_deref(), Some("a"));
+
+        let unlabeled_arg = SyntaxNode::new(
+            NodeKind::Arg,
+            vec![
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1)),
+                SyntaxElement::Token(mk_token(TokenKind::Plus, 0, 0)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2))],
+                )),
+            ],
+        );
+        assert!(lowerer.lower_arg(&unlabeled_arg).label.is_none());
+
+        let block_expr_stmt = SyntaxNode::new(
+            NodeKind::Block,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::ExprStmt,
+                vec![SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+                ))],
+            ))],
+        );
+        let lowered_block = lowerer.lower_block(&block_expr_stmt);
+        assert!(lowered_block.expr.is_some());
+
+        let block_expr_stmt_token_child = SyntaxNode::new(
+            NodeKind::Block,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::ExprStmt,
+                vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+            ))],
+        );
+        assert!(lowerer
+            .lower_block(&block_expr_stmt_token_child)
+            .expr
+            .is_some());
+
+        let block_last_ident_expr = SyntaxNode::new(
+            NodeKind::Block,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::Ident,
+                vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+            ))],
+        );
+        assert!(lowerer.lower_block(&block_last_ident_expr).expr.is_some());
+
+        let pattern_literal_fallback = SyntaxNode::new(
+            NodeKind::Pattern,
+            vec![SyntaxElement::Token(mk_token(TokenKind::Comma, 0, 0))],
+        );
+        assert!(matches!(
+            lowerer.lower_pattern(&pattern_literal_fallback),
+            ast::Pattern::Wildcard
+        ));
+
+        let p1 = SyntaxNode::new(
+            NodeKind::Pattern,
+            vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+        );
+        let p2 = SyntaxNode::new(
+            NodeKind::Pattern,
+            vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2))],
+        );
+        let or_pattern = SyntaxNode::new(
+            NodeKind::Pattern,
+            vec![
+                SyntaxElement::Node(p1),
+                SyntaxElement::Token(mk_token(TokenKind::Pipe, 0, 0)),
+                SyntaxElement::Node(p2),
+            ],
+        );
+        assert!(matches!(
+            lowerer.lower_pattern(&or_pattern),
+            ast::Pattern::Or(parts) if parts.len() == 2
+        ));
+
+        let literal_with_node_child = SyntaxNode::new(
+            NodeKind::Literal,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::Ident,
+                vec![],
+            ))],
+        );
+        assert!(matches!(
+            lowerer.lower_expr(&literal_with_node_child),
+            ast::Expr::Literal(ast::Literal::Nil)
+        ));
+
+        let ident_fallback = SyntaxNode::new(
+            NodeKind::Ident,
+            vec![SyntaxElement::Token(mk_token(TokenKind::Plus, 0, 0))],
+        );
+        assert!(matches!(
+            lowerer.lower_expr(&ident_fallback),
+            ast::Expr::Literal(ast::Literal::Nil)
+        ));
+
+        let ident_with_node_child = SyntaxNode::new(
+            NodeKind::Ident,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::Literal,
+                vec![],
+            ))],
+        );
+        assert!(matches!(
+            lowerer.lower_expr(&ident_with_node_child),
+            ast::Expr::Literal(ast::Literal::Nil)
+        ));
+
+        let cascade_expr = SyntaxNode::new(
+            NodeKind::CascadeExpr,
+            vec![
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+                )),
+                SyntaxElement::Token(mk_token(TokenKind::Bang, 0, 0)),
+                SyntaxElement::Token(mk_token(TokenKind::Or, 0, 0)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2))],
+                )),
+            ],
+        );
+        assert!(matches!(
+            lowerer.lower_expr(&cascade_expr),
+            ast::Expr::Cascade {
+                context: Some(_),
+                ..
+            }
+        ));
+
+        let cascade_without_context = SyntaxNode::new(
+            NodeKind::CascadeExpr,
+            vec![
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+                )),
+                SyntaxElement::Token(mk_token(TokenKind::Bang, 0, 0)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2))],
+                )),
+            ],
+        );
+        assert!(matches!(
+            lowerer.lower_expr(&cascade_without_context),
+            ast::Expr::Cascade { context: None, .. }
+        ));
+
+        let witness_call = parse_expr_node("Witness<i32>.new()");
+        let _ = Lowerer::new("Witness<i32>.new()").lower_expr(&witness_call);
+
+        let non_witness_new_call = parse_expr_node("x.new()");
+        let _ = Lowerer::new("x.new()").lower_expr(&non_witness_new_call);
+
+        let plain_call = parse_expr_node("f(1)");
+        let _ = Lowerer::new("f(1)").lower_expr(&plain_call);
+
+        let token_callee_call = SyntaxNode::new(
+            NodeKind::CallExpr,
+            vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+        );
+        let _ = lowerer.lower_expr(&token_callee_call);
+
+        let branch_expr = parse_expr_node("branch x { _ given true => 1, _ => 0 }");
+        let _ = Lowerer::new("branch x { _ given true => 1, _ => 0 }").lower_expr(&branch_expr);
+
+        let branch_no_guard = parse_expr_node("branch x { _ => 1 }");
+        let _ = Lowerer::new("branch x { _ => 1 }").lower_expr(&branch_no_guard);
+
+        let manual_branch_no_guard = SyntaxNode::new(
+            NodeKind::BranchExpr,
+            vec![
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+                )),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Pattern,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2))],
+                )),
+                SyntaxElement::Token(mk_token(TokenKind::FatArrow, 0, 0)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Literal,
+                    vec![SyntaxElement::Token(mk_token(
+                        TokenKind::Int {
+                            base: izel_lexer::Base::Decimal,
+                            empty_int: false,
+                        },
+                        2,
+                        3,
+                    ))],
+                )),
+                SyntaxElement::Token(mk_token(TokenKind::Comma, 0, 0)),
+            ],
+        );
+        let _ = lowerer.lower_expr(&manual_branch_no_guard);
+
+        let generic_args = SyntaxNode::new(
+            NodeKind::GenericArgs,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::GenericArg,
+                vec![SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+                ))],
+            ))],
+        );
+        assert_eq!(lowerer.lower_generic_args(&generic_args).len(), 1);
+
+        let generic_args_mixed = SyntaxNode::new(
+            NodeKind::GenericArgs,
+            vec![
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::GenericArg,
+                    vec![
+                        SyntaxElement::Token(mk_token(TokenKind::Comma, 0, 0)),
+                        SyntaxElement::Node(SyntaxNode::new(
+                            NodeKind::Literal,
+                            vec![SyntaxElement::Token(mk_token(
+                                TokenKind::Int {
+                                    base: izel_lexer::Base::Decimal,
+                                    empty_int: false,
+                                },
+                                2,
+                                3,
+                            ))],
+                        )),
+                    ],
+                )),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+                )),
+            ],
+        );
+        assert_eq!(lowerer.lower_generic_args(&generic_args_mixed).len(), 1);
+
+        let draw_decl = parse_decl_node("draw a::*;");
+        let draw_items = Lowerer::new("draw a::*;").lower_item(&draw_decl);
+        assert!(!draw_items.is_empty());
+
+        let draw_with_node = SyntaxNode::new(
+            NodeKind::DrawDecl,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::Ident,
+                vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+            ))],
+        );
+        let _ = lowerer.lower_draw(&draw_with_node);
+
+        let effect_node = SyntaxNode::new(
+            NodeKind::Effect,
+            vec![SyntaxElement::Token(mk_token(TokenKind::Comma, 0, 0))],
+        );
+        assert!(lowerer.lower_effect(&effect_node).is_empty());
+
+        let effect_with_node = SyntaxNode::new(
+            NodeKind::Effect,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::Ident,
+                vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+            ))],
+        );
+        assert!(lowerer.lower_effect(&effect_with_node).is_empty());
+
+        let macro_call_node = SyntaxNode::new(
+            NodeKind::MacroCall,
+            vec![
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Arg,
+                    vec![SyntaxElement::Node(SyntaxNode::new(
+                        NodeKind::Literal,
+                        vec![SyntaxElement::Token(mk_token(
+                            TokenKind::Int {
+                                base: izel_lexer::Base::Decimal,
+                                empty_int: false,
+                            },
+                            1,
+                            2,
+                        ))],
+                    ))],
+                )),
+            ],
+        );
+        let (_, args) = lowerer.lower_macro_call(&macro_call_node);
+        assert_eq!(args.len(), 1);
+
+        let macro_call_with_token_arg = SyntaxNode::new(
+            NodeKind::MacroCall,
+            vec![
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Arg,
+                    vec![
+                        SyntaxElement::Token(mk_token(TokenKind::Comma, 0, 0)),
+                        SyntaxElement::Node(SyntaxNode::new(
+                            NodeKind::Literal,
+                            vec![SyntaxElement::Token(mk_token(
+                                TokenKind::Int {
+                                    base: izel_lexer::Base::Decimal,
+                                    empty_int: false,
+                                },
+                                1,
+                                2,
+                            ))],
+                        )),
+                    ],
+                )),
+            ],
+        );
+        let (_, token_arg_args) = lowerer.lower_macro_call(&macro_call_with_token_arg);
+        assert_eq!(token_arg_args.len(), 1);
     }
 }

@@ -37,10 +37,13 @@ pub fn elaborate_dual(dual: &mut ast::Dual) -> Option<ast::Item> {
         encode_fn = Some(encode);
     }
 
-    if let (Some(encode), Some(decode)) = (&encode_fn, &decode_fn) {
-        if !encode.effects.is_empty() || !decode.effects.is_empty() {
+    match (&encode_fn, &decode_fn) {
+        (Some(encode), Some(decode))
+            if !encode.effects.is_empty() || !decode.effects.is_empty() =>
+        {
             return Some(generate_roundtrip_test(&dual.name, encode, decode));
         }
+        _ => {}
     }
 
     None
@@ -245,4 +248,122 @@ fn derive_encode_from_decode(decode: &ast::Forge) -> ast::Forge {
         invariants: vec![],
         span: decode.span,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use izel_span::Span;
+
+    fn span() -> Span {
+        Span::dummy()
+    }
+
+    fn mk_forge(name: &str, effects: &[&str]) -> ast::Forge {
+        ast::Forge {
+            name: name.to_string(),
+            name_span: span(),
+            visibility: ast::Visibility::Hidden,
+            is_flow: false,
+            generic_params: vec![],
+            params: vec![],
+            ret_type: ast::Type::SelfType,
+            effects: effects.iter().map(|eff| (*eff).to_string()).collect(),
+            attributes: vec![],
+            requires: vec![],
+            ensures: vec![],
+            body: None,
+            span: span(),
+        }
+    }
+
+    fn mk_shape(name: &str) -> ast::Shape {
+        ast::Shape {
+            name: name.to_string(),
+            visibility: ast::Visibility::Hidden,
+            generic_params: vec![],
+            fields: vec![ast::Field {
+                name: "v".to_string(),
+                visibility: ast::Visibility::Hidden,
+                ty: ast::Type::Prim("i32".to_string()),
+                span: span(),
+            }],
+            attributes: vec![],
+            invariants: vec![],
+            span: span(),
+        }
+    }
+
+    fn mk_dual(name: &str, items: Vec<ast::Item>) -> ast::Dual {
+        ast::Dual {
+            name: name.to_string(),
+            visibility: ast::Visibility::Hidden,
+            generic_params: vec![],
+            items,
+            attributes: vec![],
+            span: span(),
+        }
+    }
+
+    fn find_forge<'a>(items: &'a [ast::Item], name: &str) -> Option<&'a ast::Forge> {
+        items.iter().find_map(|item| match item {
+            ast::Item::Forge(forge) if forge.name == name => Some(forge),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn elaborate_dual_encode_only_generates_decode_and_ignores_non_forge_items() {
+        let mut dual = mk_dual(
+            "Codec",
+            vec![
+                ast::Item::Scroll(ast::Scroll {
+                    name: "Kind".to_string(),
+                    visibility: ast::Visibility::Hidden,
+                    variants: vec![],
+                    attributes: vec![],
+                    span: span(),
+                }),
+                ast::Item::Forge(mk_forge("encode", &[])),
+            ],
+        );
+
+        let generated = elaborate_dual(&mut dual);
+
+        assert!(generated.is_none());
+        assert!(find_forge(&dual.items, "encode").is_some());
+        assert!(find_forge(&dual.items, "decode").is_some());
+    }
+
+    #[test]
+    fn elaborate_dual_decode_only_generates_encode_and_roundtrip_test_when_effectful() {
+        let mut dual = mk_dual("Codec", vec![ast::Item::Forge(mk_forge("decode", &["io"]))]);
+
+        let generated = elaborate_dual(&mut dual);
+
+        assert!(find_forge(&dual.items, "encode").is_some());
+        assert!(find_forge(&dual.items, "decode").is_some());
+
+        assert!(matches!(generated, Some(ast::Item::Forge(_))));
+        let mut roundtrip_opt = None;
+        if let Some(ast::Item::Forge(roundtrip)) = generated {
+            roundtrip_opt = Some(roundtrip);
+        }
+        let roundtrip = roundtrip_opt.expect("expected generated forge item");
+        assert_eq!(roundtrip.name, "Codec_test");
+        assert!(roundtrip.effects.iter().any(|eff| eff == "io"));
+        assert!(roundtrip.attributes.iter().any(|attr| attr.name == "test"));
+    }
+
+    #[test]
+    fn elaborate_dual_shape_only_generates_encode_and_decode_without_roundtrip() {
+        let mut dual = mk_dual("Point", vec![ast::Item::Shape(mk_shape("Point"))]);
+
+        let generated = elaborate_dual(&mut dual);
+
+        assert!(generated.is_none());
+        assert_eq!(dual.items.len(), 3);
+        assert!(find_forge(&dual.items, "encode").is_some());
+        assert!(find_forge(&dual.items, "decode").is_some());
+    }
 }
