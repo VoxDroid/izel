@@ -68,9 +68,11 @@ impl<'ctx, 'a> MirCodegen<'ctx, 'a> {
 
         // 2.1 Store function parameters into locals (first N locals)
         for (i, llvm_param) in function.get_param_iter().enumerate() {
-            if let Some(ptr) = self.locals.get(&Local(i)) {
-                self.builder.build_store(*ptr, llvm_param)?;
-            }
+            let ptr = *self
+                .locals
+                .get(&Local(i))
+                .ok_or_else(|| anyhow!("missing local slot for parameter {}", i))?;
+            self.builder.build_store(ptr, llvm_param)?;
         }
 
         // 3. Lower each block
@@ -113,11 +115,13 @@ impl<'ctx, 'a> MirCodegen<'ctx, 'a> {
                 }
 
                 let call = self.builder.build_call(function, &llvm_args, "call_tmp")?;
-                if let Some(val) = call.try_as_basic_value().left() {
-                    if let Some(dest_local) = dest {
-                        let ptr = self.locals[dest_local];
-                        self.builder.build_store(ptr, val)?;
-                    }
+                if let Some((dest_local, val)) = dest.as_ref().and_then(|dest_local| {
+                    call.try_as_basic_value()
+                        .left()
+                        .map(|val| (*dest_local, val))
+                }) {
+                    let ptr = self.locals[&dest_local];
+                    self.builder.build_store(ptr, val)?;
                 }
             }
             Instruction::Phi(_local, _entries) => {
@@ -377,12 +381,13 @@ impl<'ctx, 'a> Codegen<'ctx, 'a> {
 
         // Check for @intrinsic
         for attr in &f.attributes {
-            if attr.name == "intrinsic" {
-                if let Some(ast::Expr::Literal(ast::Literal::Str(name))) = attr.args.first() {
-                    let intrinsic_name = name.trim_matches('"');
-                    self.gen_intrinsic_body(function, intrinsic_name, &f.params)?;
-                    return Ok(function);
-                }
+            if attr.name != "intrinsic" {
+                continue;
+            }
+            if let Some(ast::Expr::Literal(ast::Literal::Str(name))) = attr.args.first() {
+                let intrinsic_name = name.trim_matches('"');
+                self.gen_intrinsic_body(function, intrinsic_name, &f.params)?;
+                return Ok(function);
             }
         }
 
@@ -1294,6 +1299,94 @@ mod tests {
             second.as_global_value().as_pointer_value()
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_codegen_skips_non_intrinsic_and_non_string_intrinsic_attrs() -> Result<()> {
+        let context = Context::create();
+        let mut codegen = Codegen::new(&context, "attr_fallbacks", "");
+
+        let item = HirItem::Forge(Box::new(HirForge {
+            name: "attr_paths".to_string(),
+            name_span: Span::dummy(),
+            def_id: DefId(901),
+            params: vec![],
+            ret_type: Type::Prim(PrimType::I32),
+            attributes: vec![
+                ast::Attribute {
+                    name: "inline".to_string(),
+                    args: vec![],
+                    span: Span::dummy(),
+                },
+                ast::Attribute {
+                    name: "intrinsic".to_string(),
+                    args: vec![ast::Expr::Literal(ast::Literal::Int(1))],
+                    span: Span::dummy(),
+                },
+            ],
+            body: None,
+            requires: vec![],
+            ensures: vec![],
+            span: Span::dummy(),
+        }));
+
+        codegen.declare_item(&item)?;
+        codegen.gen_item(&item, &HashMap::new())?;
+
+        assert!(codegen.module.get_function("_iz_attr_paths").is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn test_codegen_exercises_remaining_intrinsic_paths() -> Result<()> {
+        let context = Context::create();
+        let mut codegen = Codegen::new(&context, "intrinsic_paths", "");
+
+        let i32_abs = HirItem::Forge(Box::new(intrinsic_forge(
+            902,
+            "abs_again",
+            "i32_abs",
+            vec![param(903, "v", Type::Prim(PrimType::I32))],
+            Type::Prim(PrimType::I32),
+        )));
+        let io_print_int = HirItem::Forge(Box::new(intrinsic_forge(
+            904,
+            "print_int",
+            "io_print_int",
+            vec![param(905, "v", Type::Prim(PrimType::I32))],
+            Type::Prim(PrimType::Void),
+        )));
+        let io_print_newline = HirItem::Forge(Box::new(intrinsic_forge(
+            906,
+            "print_newline",
+            "io_print_newline",
+            vec![],
+            Type::Prim(PrimType::Void),
+        )));
+        let simd_sum = HirItem::Forge(Box::new(intrinsic_forge(
+            907,
+            "simd_sum",
+            "simd_i32x4_sum",
+            vec![
+                param(908, "a", Type::Prim(PrimType::I32)),
+                param(909, "b", Type::Prim(PrimType::I32)),
+                param(910, "c", Type::Prim(PrimType::I32)),
+                param(911, "d", Type::Prim(PrimType::I32)),
+            ],
+            Type::Prim(PrimType::I32),
+        )));
+
+        let items = [i32_abs, io_print_int, io_print_newline, simd_sum];
+        for item in &items {
+            codegen.declare_item(item)?;
+            codegen.gen_item(item, &HashMap::new())?;
+        }
+
+        let ir = codegen.emit_llvm_ir();
+        assert!(ir.contains("@llvm.abs.i32"));
+        assert!(ir.contains("@printf"));
+        assert!(ir.contains("@llvm.vector.reduce.add.v4i32"));
         Ok(())
     }
 }

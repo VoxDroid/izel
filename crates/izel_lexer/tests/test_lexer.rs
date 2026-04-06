@@ -173,3 +173,9 @@ fn lone_quote_char_path_sets_unterminated_char_token() {
     let kinds = lex_kinds("'");
     assert_eq!(kinds, vec![TokenKind::Char { terminated: false }]);
 }
+
+#[test]
+fn terminated_char_literal_path_is_tokenized() {
+    let kinds = lex_kinds("'a'");
+    assert_eq!(kinds, vec![TokenKind::Char { terminated: true }]);
+}

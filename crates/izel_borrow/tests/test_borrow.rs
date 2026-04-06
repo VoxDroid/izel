@@ -254,3 +254,16 @@ fn borrow_checker_zone_enter_exit_without_payload_is_valid() {
     let mut checker = BorrowChecker::new();
     assert!(checker.check(&mir).is_ok());
 }
+
+#[test]
+fn borrow_checker_ignores_mismatched_zone_exit_name() {
+    let mut mir = MirBody::new();
+    let bb = mir.blocks.node_weight_mut(mir.entry).unwrap();
+    bb.instructions
+        .push(Instruction::ZoneEnter("arena".to_string()));
+    bb.instructions
+        .push(Instruction::ZoneExit("other".to_string()));
+
+    let mut checker = BorrowChecker::new();
+    assert!(checker.check(&mir).is_ok());
+}

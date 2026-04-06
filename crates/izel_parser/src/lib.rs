@@ -314,19 +314,19 @@ impl Parser {
         }
 
         children.extend(self.eat_trivia());
-        if self.current_kind() == TokenKind::OpenBrace {
+        if self.current_kind() != TokenKind::OpenBrace {
+            return SyntaxNode::new(NodeKind::ShapeDecl, children);
+        }
+        children.push(SyntaxElement::Token(self.bump()));
+        while self.current_kind() != TokenKind::CloseBrace && self.current_kind() != TokenKind::Eof
+        {
+            let start = self.pos;
+            children.push(SyntaxElement::Node(self.parse_field()));
+            children.extend(self.eat_trivia().into_iter());
+            self.ensure_progress(start); // Safety bump
+        }
+        if self.current_kind() == TokenKind::CloseBrace {
             children.push(SyntaxElement::Token(self.bump()));
-            while self.current_kind() != TokenKind::CloseBrace
-                && self.current_kind() != TokenKind::Eof
-            {
-                let start = self.pos;
-                children.push(SyntaxElement::Node(self.parse_field()));
-                children.extend(self.eat_trivia().into_iter());
-                self.ensure_progress(start); // Safety bump
-            }
-            if self.current_kind() == TokenKind::CloseBrace {
-                children.push(SyntaxElement::Token(self.bump()));
-            }
         }
 
         SyntaxNode::new(NodeKind::ShapeDecl, children)
@@ -602,19 +602,19 @@ impl Parser {
         }
 
         children.extend(self.eat_trivia());
-        if self.current_kind() == TokenKind::OpenBrace {
+        if self.current_kind() != TokenKind::OpenBrace {
+            return SyntaxNode::new(NodeKind::WardDecl, children);
+        }
+        children.push(SyntaxElement::Token(self.bump()));
+        while self.current_kind() != TokenKind::CloseBrace && self.current_kind() != TokenKind::Eof
+        {
+            let start = self.pos;
+            children.push(SyntaxElement::Node(self.parse_decl()));
+            children.extend(self.eat_trivia().into_iter());
+            self.ensure_progress(start); // Safety bump
+        }
+        if self.current_kind() == TokenKind::CloseBrace {
             children.push(SyntaxElement::Token(self.bump()));
-            while self.current_kind() != TokenKind::CloseBrace
-                && self.current_kind() != TokenKind::Eof
-            {
-                let start = self.pos;
-                children.push(SyntaxElement::Node(self.parse_decl()));
-                children.extend(self.eat_trivia().into_iter());
-                self.ensure_progress(start); // Safety bump
-            }
-            if self.current_kind() == TokenKind::CloseBrace {
-                children.push(SyntaxElement::Token(self.bump()));
-            }
         }
 
         SyntaxNode::new(NodeKind::WardDecl, children)
@@ -708,19 +708,19 @@ impl Parser {
             return self.parse_impl_after_keywords(children); // Treat weave...for as an ImplBlock too
         }
 
-        if self.current_kind() == TokenKind::OpenBrace {
+        if self.current_kind() != TokenKind::OpenBrace {
+            return SyntaxNode::new(NodeKind::WeaveDecl, children);
+        }
+        children.push(SyntaxElement::Token(self.bump()));
+        while self.current_kind() != TokenKind::CloseBrace && self.current_kind() != TokenKind::Eof
+        {
+            let start = self.pos;
+            children.push(SyntaxElement::Node(self.parse_decl()));
+            children.extend(self.eat_trivia().into_iter());
+            self.ensure_progress(start); // Safety bump
+        }
+        if self.current_kind() == TokenKind::CloseBrace {
             children.push(SyntaxElement::Token(self.bump()));
-            while self.current_kind() != TokenKind::CloseBrace
-                && self.current_kind() != TokenKind::Eof
-            {
-                let start = self.pos;
-                children.push(SyntaxElement::Node(self.parse_decl()));
-                children.extend(self.eat_trivia().into_iter());
-                self.ensure_progress(start); // Safety bump
-            }
-            if self.current_kind() == TokenKind::CloseBrace {
-                children.push(SyntaxElement::Token(self.bump()));
-            }
         }
 
         SyntaxNode::new(NodeKind::WeaveDecl, children)
@@ -1001,36 +1001,36 @@ impl Parser {
         children.extend(self.eat_trivia());
         children.push(SyntaxElement::Node(self.parse_expr(Precedence::Call)));
         children.extend(self.eat_trivia());
-        if self.current_kind() == TokenKind::OpenBrace {
-            children.push(SyntaxElement::Token(self.bump()));
-            while self.current_kind() != TokenKind::CloseBrace
-                && self.current_kind() != TokenKind::Eof
-            {
-                let start = self.pos;
-                children.push(SyntaxElement::Node(self.parse_pattern()));
+        if self.current_kind() != TokenKind::OpenBrace {
+            return SyntaxNode::new(NodeKind::BranchExpr, children);
+        }
+        children.push(SyntaxElement::Token(self.bump()));
+        while self.current_kind() != TokenKind::CloseBrace && self.current_kind() != TokenKind::Eof
+        {
+            let start = self.pos;
+            children.push(SyntaxElement::Node(self.parse_pattern()));
+            children.extend(self.eat_trivia().into_iter());
+            if self.current_kind() == TokenKind::Given {
+                // Guard
+                children.push(SyntaxElement::Token(self.bump()));
                 children.extend(self.eat_trivia().into_iter());
-                if self.current_kind() == TokenKind::Given {
-                    // Guard
-                    children.push(SyntaxElement::Token(self.bump()));
-                    children.extend(self.eat_trivia().into_iter());
-                    children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
-                    children.extend(self.eat_trivia().into_iter());
-                }
-                if self.current_kind() == TokenKind::FatArrow {
-                    children.push(SyntaxElement::Token(self.bump()));
-                    children.extend(self.eat_trivia().into_iter());
-                    children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
-                }
+                children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
                 children.extend(self.eat_trivia().into_iter());
-                if self.current_kind() == TokenKind::Comma {
-                    children.push(SyntaxElement::Token(self.bump()));
-                }
-                children.extend(self.eat_trivia().into_iter());
-                self.ensure_progress(start); // Safety bump
             }
-            if self.current_kind() == TokenKind::CloseBrace {
+            if self.current_kind() == TokenKind::FatArrow {
+                children.push(SyntaxElement::Token(self.bump()));
+                children.extend(self.eat_trivia().into_iter());
+                children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+            }
+            children.extend(self.eat_trivia().into_iter());
+            if self.current_kind() == TokenKind::Comma {
                 children.push(SyntaxElement::Token(self.bump()));
             }
+            children.extend(self.eat_trivia().into_iter());
+            self.ensure_progress(start); // Safety bump
+        }
+        if self.current_kind() == TokenKind::CloseBrace {
+            children.push(SyntaxElement::Token(self.bump()));
         }
         SyntaxNode::new(NodeKind::BranchExpr, children)
     }
@@ -1263,33 +1263,34 @@ impl Parser {
             TokenKind::Pound => {
                 children.push(SyntaxElement::Token(self.bump())); // #
                 children.extend(self.eat_trivia());
-                if self.current_kind() == TokenKind::OpenBracket {
-                    children.push(SyntaxElement::Token(self.bump())); // [
-                    children.extend(self.eat_trivia());
-                    if self.is_naming_ident() {
-                        children.push(SyntaxElement::Token(self.bump())); // name
-                    }
-                    children.extend(self.eat_trivia());
-                    if self.current_kind() == TokenKind::OpenParen {
-                        children.push(SyntaxElement::Token(self.bump())); // (
-                        while self.current_kind() != TokenKind::CloseParen
-                            && self.current_kind() != TokenKind::Eof
-                        {
-                            children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+                if self.current_kind() != TokenKind::OpenBracket {
+                    return SyntaxNode::new(NodeKind::Attribute, children);
+                }
+                children.push(SyntaxElement::Token(self.bump())); // [
+                children.extend(self.eat_trivia());
+                if self.is_naming_ident() {
+                    children.push(SyntaxElement::Token(self.bump())); // name
+                }
+                children.extend(self.eat_trivia());
+                if self.current_kind() == TokenKind::OpenParen {
+                    children.push(SyntaxElement::Token(self.bump())); // (
+                    while self.current_kind() != TokenKind::CloseParen
+                        && self.current_kind() != TokenKind::Eof
+                    {
+                        children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+                        children.extend(self.eat_trivia().into_iter());
+                        if self.current_kind() == TokenKind::Comma {
+                            children.push(SyntaxElement::Token(self.bump()));
                             children.extend(self.eat_trivia().into_iter());
-                            if self.current_kind() == TokenKind::Comma {
-                                children.push(SyntaxElement::Token(self.bump()));
-                                children.extend(self.eat_trivia().into_iter());
-                            }
                         }
-                        if self.current_kind() == TokenKind::CloseParen {
-                            children.push(SyntaxElement::Token(self.bump())); // )
-                        }
-                        children.extend(self.eat_trivia());
                     }
-                    if self.current_kind() == TokenKind::CloseBracket {
-                        children.push(SyntaxElement::Token(self.bump())); // ]
+                    if self.current_kind() == TokenKind::CloseParen {
+                        children.push(SyntaxElement::Token(self.bump())); // )
                     }
+                    children.extend(self.eat_trivia());
+                }
+                if self.current_kind() == TokenKind::CloseBracket {
+                    children.push(SyntaxElement::Token(self.bump()));
                 }
             }
             _ => {}
@@ -1599,6 +1600,37 @@ draw std/io::*;
         let mut each_expr = parser_from("item in items { give item }");
         let each_node = each_expr.parse_each_expr(vec![]);
         assert!(contains_kind(&each_node, NodeKind::Block));
+    }
+
+    #[test]
+    fn test_parse_helpers_cover_close_brace_attribute_paths() {
+        let shape = parse_test("shape Point { x: i32 }");
+        assert_eq!(shape.kind, NodeKind::ShapeDecl);
+
+        let ward = parse_test("ward Core { forge helper() { give } }");
+        assert_eq!(ward.kind, NodeKind::WardDecl);
+
+        let weave = parse_test("weave Renderable { forge render(self) { give } }");
+        assert_eq!(weave.kind, NodeKind::WeaveDecl);
+
+        let mut branch = parser_from("value { _ => 1 }");
+        assert_eq!(branch.parse_branch_expr(vec![]).kind, NodeKind::BranchExpr);
+
+        let mut attr = parser_from("#[bench]");
+        assert_eq!(attr.parse_attribute().kind, NodeKind::Attribute);
+    }
+
+    #[test]
+    fn test_parse_helpers_cover_early_return_paths_without_braces() {
+        assert_eq!(parse_test("shape Point").kind, NodeKind::ShapeDecl);
+        assert_eq!(parse_test("ward Core").kind, NodeKind::WardDecl);
+        assert_eq!(parse_test("weave Renderable").kind, NodeKind::WeaveDecl);
+
+        let mut branch = parser_from("value");
+        assert_eq!(branch.parse_branch_expr(vec![]).kind, NodeKind::BranchExpr);
+
+        let mut attr = parser_from("# bare");
+        assert_eq!(attr.parse_attribute().kind, NodeKind::Attribute);
     }
 
     #[test]

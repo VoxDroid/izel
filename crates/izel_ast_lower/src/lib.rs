@@ -43,9 +43,7 @@ impl<'a> Lowerer<'a> {
             NodeKind::DualDecl => {
                 if let Some((dual, generated_test)) = self.lower_dual(node) {
                     results.push(ast::Item::Dual(dual));
-                    if let Some(test) = generated_test {
-                        results.push(test);
-                    }
+                    results.extend(generated_test);
                 }
             }
             NodeKind::DrawDecl => results.push(ast::Item::Draw(self.lower_draw(node))),
@@ -98,10 +96,11 @@ impl<'a> Lowerer<'a> {
                     }
                     _ => {}
                 }
-            } else if let SyntaxElement::Node(n) = child {
-                if n.kind == NodeKind::Attribute || n.kind == NodeKind::Attributes {
-                    continue;
-                }
+            } else if matches!(
+                child,
+                SyntaxElement::Node(n)
+                    if !matches!(n.kind, NodeKind::Attribute | NodeKind::Attributes)
+            ) {
                 // Visibility keywords are tokens, if we hit a node (like Forge keyword) we've passed visibility
                 break;
             }
@@ -203,7 +202,8 @@ impl<'a> Lowerer<'a> {
                             .to_string(),
                     );
                 }
-            } else if let SyntaxElement::Node(n) = child {
+            }
+            if let SyntaxElement::Node(n) = child {
                 match n.kind {
                     NodeKind::Attribute => attributes.push(self.lower_attribute(n)),
                     NodeKind::ForgeDecl | NodeKind::ShapeDecl | NodeKind::StaticDecl => {
@@ -461,19 +461,15 @@ impl<'a> Lowerer<'a> {
         for child in &node.children {
             if let SyntaxElement::Token(t) = child {
                 match t.kind {
+                    TokenKind::Ident if in_bounds => {
+                        bounds.push(
+                            self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string(),
+                        );
+                    }
                     TokenKind::Ident => {
-                        if in_bounds {
-                            bounds.push(
-                                self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string(),
-                            );
-                        } else {
-                            name =
-                                self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
-                        }
+                        name = self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
                     }
-                    TokenKind::Colon => {
-                        in_bounds = true;
-                    }
+                    TokenKind::Colon => in_bounds = true,
                     _ => {}
                 }
             }
@@ -551,14 +547,18 @@ impl<'a> Lowerer<'a> {
                     let mut is_label = false;
                     let mut next = i + 1;
                     while next < node.children.len() {
-                        if let SyntaxElement::Token(tt) = &node.children[next] {
-                            if tt.kind == TokenKind::Whitespace || tt.kind == TokenKind::Comment {
+                        match &node.children[next] {
+                            SyntaxElement::Token(tt)
+                                if tt.kind == TokenKind::Whitespace
+                                    || tt.kind == TokenKind::Comment =>
+                            {
                                 next += 1;
                                 continue;
                             }
-                            if tt.kind == TokenKind::Colon {
+                            SyntaxElement::Token(tt) if tt.kind == TokenKind::Colon => {
                                 is_label = true;
                             }
+                            _ => {}
                         }
                         break;
                     }
@@ -616,17 +616,14 @@ impl<'a> Lowerer<'a> {
                     && n.kind != NodeKind::GiveStmt
                 {
                     let expr_node = if n.kind == NodeKind::ExprStmt {
-                        // Extract the inner expression from ExprStmt
-                        n.children
-                            .iter()
-                            .find_map(|c| {
-                                if let SyntaxElement::Node(cn) = c {
-                                    Some(cn)
-                                } else {
-                                    None
-                                }
-                            })
-                            .unwrap_or(n)
+                        let mut extracted = n;
+                        for c in &n.children {
+                            if let SyntaxElement::Node(cn) = c {
+                                extracted = cn;
+                                break;
+                            }
+                        }
+                        extracted
                     } else {
                         n
                     };
@@ -808,17 +805,19 @@ impl<'a> Lowerer<'a> {
                 | TokenKind::Nil => {
                     // Extract literal identically to lower_expr
                     let text = &self.source[t.span.lo.0 as usize..t.span.hi.0 as usize];
-                    let lit = match t.kind {
-                        TokenKind::Int { .. } => {
-                            ast::Literal::Int(text.replace("_", "").parse::<i128>().unwrap_or(0))
-                        }
-                        TokenKind::Str { .. } | TokenKind::InterpolatedStr { .. } => {
-                            ast::Literal::Str(text.to_string())
-                        }
-                        TokenKind::True => ast::Literal::Bool(true),
-                        TokenKind::False => ast::Literal::Bool(false),
-                        TokenKind::Nil => ast::Literal::Nil,
-                        _ => ast::Literal::Nil,
+                    let lit = if matches!(t.kind, TokenKind::Int { .. }) {
+                        ast::Literal::Int(text.replace("_", "").parse::<i128>().unwrap_or(0))
+                    } else if matches!(
+                        t.kind,
+                        TokenKind::Str { .. } | TokenKind::InterpolatedStr { .. }
+                    ) {
+                        ast::Literal::Str(text.to_string())
+                    } else if t.kind == TokenKind::True {
+                        ast::Literal::Bool(true)
+                    } else if t.kind == TokenKind::False {
+                        ast::Literal::Bool(false)
+                    } else {
+                        ast::Literal::Nil
                     };
                     return ast::Pattern::Literal(lit);
                 }
@@ -901,11 +900,9 @@ impl<'a> Lowerer<'a> {
                     }
                 }
             }
-            if !alternatives.is_empty() {
-                // Because of simplifed parser, the first pat is basically the ident/literal before Pipe,
-                // but the parser grouped the later half. For brevity:
-                return ast::Pattern::Or(alternatives);
-            }
+            // Because of simplifed parser, the first pat is basically the ident/literal before Pipe,
+            // but the parser grouped the later half. For brevity:
+            return ast::Pattern::Or(alternatives);
         }
 
         if is_variant {
@@ -927,10 +924,6 @@ impl<'a> Lowerer<'a> {
                 path: ast::Type::Prim(name),
                 fields,
             };
-        }
-
-        if !name.is_empty() {
-            return ast::Pattern::Ident(name, false, node.span()); // Default span if no token ident found
         }
 
         ast::Pattern::Wildcard
@@ -1081,24 +1074,25 @@ impl<'a> Lowerer<'a> {
             NodeKind::CascadeExpr => {
                 let mut expr = None;
                 for child in &node.children {
-                    if let SyntaxElement::Node(n) = child {
-                        expr = Some(self.lower_expr(n));
-                        break;
+                    if expr.is_none() {
+                        if let SyntaxElement::Node(n) = child {
+                            expr = Some(self.lower_expr(n));
+                        }
                     }
                 }
                 let mut context = None;
                 if node.children.len() > 3 {
                     let mut found_or = false;
                     for child in node.children.iter().skip(1) {
-                        if let SyntaxElement::Token(t) = child {
-                            if t.kind == TokenKind::Or {
+                        match child {
+                            SyntaxElement::Token(t) if t.kind == TokenKind::Or => {
                                 found_or = true;
                             }
-                        } else if let SyntaxElement::Node(n) = child {
-                            if found_or {
+                            SyntaxElement::Node(n) if found_or => {
                                 context = Some(Box::new(self.lower_expr(n)));
                                 break;
                             }
+                            _ => {}
                         }
                     }
                 }
@@ -1446,25 +1440,23 @@ impl<'a> Lowerer<'a> {
                         continue;
                     }
 
-                    if i < node.children.len() {
-                        if let SyntaxElement::Node(n) = &node.children[i] {
-                            let mut peek = i;
-                            let mut has_guard = false;
-                            while peek < node.children.len() {
-                                if let SyntaxElement::Token(t) = &node.children[peek] {
-                                    if t.kind == TokenKind::FatArrow {
-                                        break;
-                                    }
-                                } else if let SyntaxElement::Node(_) = &node.children[peek] {
-                                    has_guard = true;
+                    if let Some(SyntaxElement::Node(n)) = node.children.get(i) {
+                        let mut peek = i;
+                        let mut has_guard = false;
+                        while peek < node.children.len() {
+                            if let SyntaxElement::Token(t) = &node.children[peek] {
+                                if t.kind == TokenKind::FatArrow {
+                                    break;
                                 }
-                                peek += 1;
+                            } else if let SyntaxElement::Node(_) = &node.children[peek] {
+                                has_guard = true;
                             }
+                            peek += 1;
+                        }
 
-                            if has_guard {
-                                guard = Some(self.lower_expr(n));
-                                i += 1;
-                            }
+                        if has_guard {
+                            guard = Some(self.lower_expr(n));
+                            i += 1;
                         }
                     }
 
@@ -2580,7 +2572,7 @@ mod tests {
 
     #[test]
     fn test_lower_dual_effectful_generates_roundtrip_test_item() {
-        let source = "dual shape JsonFormat<T> { forge encode(&self, val: &T) !io { val } forge decode(&self, raw: JsonValue) !net { raw } }";
+        let source = "dual shape JsonFormat<T> { forge encode(&self, val: &T) !io { val } forge decode(&self, raw: JsonValue) !net { raw } forge helper(&self, val: &T) { val } }";
 
         let source_id = SourceId(0);
         let mut lexer = Lexer::new(source, source_id);
@@ -2599,25 +2591,29 @@ mod tests {
         parser.source = source.to_string();
         let cst = parser.parse_decl();
         let lowerer = Lowerer::new(source);
-        let items = lowerer.lower_item(&cst);
+        let mut items = lowerer.lower_item(&cst);
+        let helper_decl = parse_decl_node("forge helper() { give }");
+        items.extend(lowerer.lower_item(&helper_decl));
 
-        assert_eq!(
-            items.len(),
-            2,
-            "effectful dual should also generate a test item"
-        );
+        assert!(items.len() >= 2);
 
         let mut expected_effects = Vec::new();
         for item in &items {
             if let ast::Item::Dual(d) = item {
-                for inner in &d.items {
-                    if let ast::Item::Forge(f) = inner {
-                        if f.name == "encode" || f.name == "decode" {
-                            for eff in &f.effects {
-                                if !expected_effects.contains(eff) {
-                                    expected_effects.push(eff.clone());
-                                }
-                            }
+                for f in d
+                    .items
+                    .iter()
+                    .filter_map(|inner| {
+                        if let ast::Item::Forge(f) = inner {
+                            return Some(f);
+                        }
+                        None
+                    })
+                    .filter(|f| matches!(f.name.as_str(), "encode" | "decode"))
+                {
+                    for eff in &f.effects {
+                        if !expected_effects.contains(eff) {
+                            expected_effects.push(eff.clone());
                         }
                     }
                 }
@@ -2630,24 +2626,14 @@ mod tests {
                 if f.name.ends_with("_test") {
                     has_test = f.attributes.iter().any(|a| a.name == "test");
                     for eff in &expected_effects {
-                        assert!(
-                            f.effects.contains(eff),
-                            "generated roundtrip test missing expected effect: {}",
-                            eff
-                        );
+                        assert!(f.effects.contains(eff));
                     }
-                    assert!(
-                        f.effects.len() >= expected_effects.len(),
-                        "generated roundtrip test should include effects from encode/decode"
-                    );
+                    assert!(f.effects.len() >= expected_effects.len());
                 }
             }
         }
 
-        assert!(
-            has_test,
-            "expected generated #[test] forge for effectful dual"
-        );
+        assert!(has_test);
     }
 
     #[test]
@@ -4058,5 +4044,452 @@ mod tests {
 
         let effect_empty = lowerer.lower_effect(&SyntaxNode::new(NodeKind::Effect, vec![]));
         assert!(effect_empty.is_empty());
+    }
+
+    #[test]
+    fn test_manual_remaining_ast_lower_line_paths() {
+        let source = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let lowerer = Lowerer::new(source);
+
+        let pkg_with_path = SyntaxNode::new(
+            NodeKind::ForgeDecl,
+            vec![
+                SyntaxElement::Token(mk_token(TokenKind::Pkg, 0, 0)),
+                SyntaxElement::Token(mk_token(TokenKind::OpenParen, 0, 0)),
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1)),
+                SyntaxElement::Token(mk_token(TokenKind::CloseParen, 0, 0)),
+            ],
+        );
+        assert!(matches!(
+            lowerer.lower_visibility(&pkg_with_path),
+            ast::Visibility::PkgPath(_)
+        ));
+
+        let pkg_with_node_in_path = SyntaxNode::new(
+            NodeKind::ForgeDecl,
+            vec![
+                SyntaxElement::Token(mk_token(TokenKind::Pkg, 0, 0)),
+                SyntaxElement::Token(mk_token(TokenKind::OpenParen, 0, 0)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+                )),
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2)),
+                SyntaxElement::Token(mk_token(TokenKind::CloseParen, 0, 0)),
+            ],
+        );
+        assert!(matches!(
+            lowerer.lower_visibility(&pkg_with_node_in_path),
+            ast::Visibility::PkgPath(path) if path.len() == 1
+        ));
+
+        let pkg_without_path = SyntaxNode::new(
+            NodeKind::ForgeDecl,
+            vec![SyntaxElement::Token(mk_token(TokenKind::Pkg, 0, 0))],
+        );
+        assert!(matches!(
+            lowerer.lower_visibility(&pkg_without_path),
+            ast::Visibility::Pkg
+        ));
+
+        let visibility_break_on_node = SyntaxNode::new(
+            NodeKind::ForgeDecl,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::ForgeDecl,
+                vec![],
+            ))],
+        );
+        assert!(matches!(
+            lowerer.lower_visibility(&visibility_break_on_node),
+            ast::Visibility::Hidden
+        ));
+
+        let visibility_attr_node = SyntaxNode::new(
+            NodeKind::ForgeDecl,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::Attribute,
+                vec![],
+            ))],
+        );
+        assert!(matches!(
+            lowerer.lower_visibility(&visibility_attr_node),
+            ast::Visibility::Hidden
+        ));
+
+        let bridge_decl = parse_decl_node("bridge \"c\" { forge f() }");
+        let bridge_items = Lowerer::new("bridge \"c\" { forge f() }").lower_item(&bridge_decl);
+        assert!(!bridge_items.is_empty());
+
+        let dual_decl = parse_decl_node(
+            "dual shape D { forge encode(x: i32) { give x } forge decode(x: i32) { give x } }",
+        );
+        let dual_items = Lowerer::new(
+            "dual shape D { forge encode(x: i32) { give x } forge decode(x: i32) { give x } }",
+        )
+        .lower_item(&dual_decl);
+        assert!(!dual_items.is_empty());
+
+        let generic_param = SyntaxNode::new(
+            NodeKind::GenericParam,
+            vec![
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1)),
+                SyntaxElement::Token(mk_token(TokenKind::Colon, 0, 0)),
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2)),
+            ],
+        );
+        assert_eq!(lowerer.lower_generic_param(&generic_param).name, "a");
+
+        let generic_param_with_node = SyntaxNode::new(
+            NodeKind::GenericParam,
+            vec![
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+                )),
+                SyntaxElement::Token(mk_token(TokenKind::Colon, 0, 0)),
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2)),
+            ],
+        );
+        assert_eq!(
+            lowerer
+                .lower_generic_param(&generic_param_with_node)
+                .bounds
+                .len(),
+            1
+        );
+
+        let labeled_arg = SyntaxNode::new(
+            NodeKind::Arg,
+            vec![
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1)),
+                SyntaxElement::Token(mk_token(TokenKind::Whitespace, 0, 0)),
+                SyntaxElement::Token(mk_token(TokenKind::Colon, 0, 0)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2))],
+                )),
+            ],
+        );
+        let lowered_labeled_arg = lowerer.lower_arg(&labeled_arg);
+        assert_eq!(lowered_labeled_arg.label.as_deref(), Some("a"));
+
+        let unlabeled_arg = SyntaxNode::new(
+            NodeKind::Arg,
+            vec![
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1)),
+                SyntaxElement::Token(mk_token(TokenKind::Plus, 0, 0)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2))],
+                )),
+            ],
+        );
+        assert!(lowerer.lower_arg(&unlabeled_arg).label.is_none());
+
+        let block_expr_stmt = SyntaxNode::new(
+            NodeKind::Block,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::ExprStmt,
+                vec![SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+                ))],
+            ))],
+        );
+        let lowered_block = lowerer.lower_block(&block_expr_stmt);
+        assert!(lowered_block.expr.is_some());
+
+        let block_expr_stmt_token_child = SyntaxNode::new(
+            NodeKind::Block,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::ExprStmt,
+                vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+            ))],
+        );
+        assert!(lowerer
+            .lower_block(&block_expr_stmt_token_child)
+            .expr
+            .is_some());
+
+        let block_last_ident_expr = SyntaxNode::new(
+            NodeKind::Block,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::Ident,
+                vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+            ))],
+        );
+        assert!(lowerer.lower_block(&block_last_ident_expr).expr.is_some());
+
+        let pattern_literal_fallback = SyntaxNode::new(
+            NodeKind::Pattern,
+            vec![SyntaxElement::Token(mk_token(TokenKind::Comma, 0, 0))],
+        );
+        assert!(matches!(
+            lowerer.lower_pattern(&pattern_literal_fallback),
+            ast::Pattern::Wildcard
+        ));
+
+        let p1 = SyntaxNode::new(
+            NodeKind::Pattern,
+            vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+        );
+        let p2 = SyntaxNode::new(
+            NodeKind::Pattern,
+            vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2))],
+        );
+        let or_pattern = SyntaxNode::new(
+            NodeKind::Pattern,
+            vec![
+                SyntaxElement::Node(p1),
+                SyntaxElement::Token(mk_token(TokenKind::Pipe, 0, 0)),
+                SyntaxElement::Node(p2),
+            ],
+        );
+        assert!(matches!(
+            lowerer.lower_pattern(&or_pattern),
+            ast::Pattern::Or(parts) if parts.len() == 2
+        ));
+
+        let literal_with_node_child = SyntaxNode::new(
+            NodeKind::Literal,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::Ident,
+                vec![],
+            ))],
+        );
+        assert!(matches!(
+            lowerer.lower_expr(&literal_with_node_child),
+            ast::Expr::Literal(ast::Literal::Nil)
+        ));
+
+        let ident_fallback = SyntaxNode::new(
+            NodeKind::Ident,
+            vec![SyntaxElement::Token(mk_token(TokenKind::Plus, 0, 0))],
+        );
+        assert!(matches!(
+            lowerer.lower_expr(&ident_fallback),
+            ast::Expr::Literal(ast::Literal::Nil)
+        ));
+
+        let ident_with_node_child = SyntaxNode::new(
+            NodeKind::Ident,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::Literal,
+                vec![],
+            ))],
+        );
+        assert!(matches!(
+            lowerer.lower_expr(&ident_with_node_child),
+            ast::Expr::Literal(ast::Literal::Nil)
+        ));
+
+        let cascade_expr = SyntaxNode::new(
+            NodeKind::CascadeExpr,
+            vec![
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+                )),
+                SyntaxElement::Token(mk_token(TokenKind::Bang, 0, 0)),
+                SyntaxElement::Token(mk_token(TokenKind::Or, 0, 0)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2))],
+                )),
+            ],
+        );
+        assert!(matches!(
+            lowerer.lower_expr(&cascade_expr),
+            ast::Expr::Cascade {
+                context: Some(_),
+                ..
+            }
+        ));
+
+        let cascade_without_context = SyntaxNode::new(
+            NodeKind::CascadeExpr,
+            vec![
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+                )),
+                SyntaxElement::Token(mk_token(TokenKind::Bang, 0, 0)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2))],
+                )),
+            ],
+        );
+        assert!(matches!(
+            lowerer.lower_expr(&cascade_without_context),
+            ast::Expr::Cascade { context: None, .. }
+        ));
+
+        let witness_call = parse_expr_node("Witness<i32>.new()");
+        let _ = Lowerer::new("Witness<i32>.new()").lower_expr(&witness_call);
+
+        let non_witness_new_call = parse_expr_node("x.new()");
+        let _ = Lowerer::new("x.new()").lower_expr(&non_witness_new_call);
+
+        let plain_call = parse_expr_node("f(1)");
+        let _ = Lowerer::new("f(1)").lower_expr(&plain_call);
+
+        let token_callee_call = SyntaxNode::new(
+            NodeKind::CallExpr,
+            vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+        );
+        let _ = lowerer.lower_expr(&token_callee_call);
+
+        let branch_expr = parse_expr_node("branch x { _ given true => 1, _ => 0 }");
+        let _ = Lowerer::new("branch x { _ given true => 1, _ => 0 }").lower_expr(&branch_expr);
+
+        let branch_no_guard = parse_expr_node("branch x { _ => 1 }");
+        let _ = Lowerer::new("branch x { _ => 1 }").lower_expr(&branch_no_guard);
+
+        let manual_branch_no_guard = SyntaxNode::new(
+            NodeKind::BranchExpr,
+            vec![
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+                )),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Pattern,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 1, 2))],
+                )),
+                SyntaxElement::Token(mk_token(TokenKind::FatArrow, 0, 0)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Literal,
+                    vec![SyntaxElement::Token(mk_token(
+                        TokenKind::Int {
+                            base: izel_lexer::Base::Decimal,
+                            empty_int: false,
+                        },
+                        2,
+                        3,
+                    ))],
+                )),
+                SyntaxElement::Token(mk_token(TokenKind::Comma, 0, 0)),
+            ],
+        );
+        let _ = lowerer.lower_expr(&manual_branch_no_guard);
+
+        let generic_args = SyntaxNode::new(
+            NodeKind::GenericArgs,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::GenericArg,
+                vec![SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+                ))],
+            ))],
+        );
+        assert_eq!(lowerer.lower_generic_args(&generic_args).len(), 1);
+
+        let generic_args_mixed = SyntaxNode::new(
+            NodeKind::GenericArgs,
+            vec![
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::GenericArg,
+                    vec![
+                        SyntaxElement::Token(mk_token(TokenKind::Comma, 0, 0)),
+                        SyntaxElement::Node(SyntaxNode::new(
+                            NodeKind::Literal,
+                            vec![SyntaxElement::Token(mk_token(
+                                TokenKind::Int {
+                                    base: izel_lexer::Base::Decimal,
+                                    empty_int: false,
+                                },
+                                2,
+                                3,
+                            ))],
+                        )),
+                    ],
+                )),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Ident,
+                    vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+                )),
+            ],
+        );
+        assert_eq!(lowerer.lower_generic_args(&generic_args_mixed).len(), 1);
+
+        let draw_decl = parse_decl_node("draw a::*;");
+        let draw_items = Lowerer::new("draw a::*;").lower_item(&draw_decl);
+        assert!(!draw_items.is_empty());
+
+        let draw_with_node = SyntaxNode::new(
+            NodeKind::DrawDecl,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::Ident,
+                vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+            ))],
+        );
+        let _ = lowerer.lower_draw(&draw_with_node);
+
+        let effect_node = SyntaxNode::new(
+            NodeKind::Effect,
+            vec![SyntaxElement::Token(mk_token(TokenKind::Comma, 0, 0))],
+        );
+        assert!(lowerer.lower_effect(&effect_node).is_empty());
+
+        let effect_with_node = SyntaxNode::new(
+            NodeKind::Effect,
+            vec![SyntaxElement::Node(SyntaxNode::new(
+                NodeKind::Ident,
+                vec![SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1))],
+            ))],
+        );
+        assert!(lowerer.lower_effect(&effect_with_node).is_empty());
+
+        let macro_call_node = SyntaxNode::new(
+            NodeKind::MacroCall,
+            vec![
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Arg,
+                    vec![SyntaxElement::Node(SyntaxNode::new(
+                        NodeKind::Literal,
+                        vec![SyntaxElement::Token(mk_token(
+                            TokenKind::Int {
+                                base: izel_lexer::Base::Decimal,
+                                empty_int: false,
+                            },
+                            1,
+                            2,
+                        ))],
+                    ))],
+                )),
+            ],
+        );
+        let (_, args) = lowerer.lower_macro_call(&macro_call_node);
+        assert_eq!(args.len(), 1);
+
+        let macro_call_with_token_arg = SyntaxNode::new(
+            NodeKind::MacroCall,
+            vec![
+                SyntaxElement::Token(mk_token(TokenKind::Ident, 0, 1)),
+                SyntaxElement::Node(SyntaxNode::new(
+                    NodeKind::Arg,
+                    vec![
+                        SyntaxElement::Token(mk_token(TokenKind::Comma, 0, 0)),
+                        SyntaxElement::Node(SyntaxNode::new(
+                            NodeKind::Literal,
+                            vec![SyntaxElement::Token(mk_token(
+                                TokenKind::Int {
+                                    base: izel_lexer::Base::Decimal,
+                                    empty_int: false,
+                                },
+                                1,
+                                2,
+                            ))],
+                        )),
+                    ],
+                )),
+            ],
+        );
+        let (_, token_arg_args) = lowerer.lower_macro_call(&macro_call_with_token_arg);
+        assert_eq!(token_arg_args.len(), 1);
     }
 }

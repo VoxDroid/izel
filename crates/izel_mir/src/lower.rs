@@ -244,38 +244,36 @@ impl MirLowerer {
                 if let Some(e) = expr {
                     if let HirExpr::Call(callee, args, _, _) = &**e {
                         // Check for TCO
-                        if let HirExpr::Ident(name, _, _, _) = &**callee {
-                            if name == &self.forge_name {
-                                // TCO transformation:
-                                let mut arg_ops: Vec<Operand> = Vec::new();
-                                for arg in args {
-                                    let rv = self.lower_expr(arg);
-                                    arg_ops.push(self.rvalue_to_operand(rv));
-                                }
-                                // Re-assign params
-                                let param_defs = self.param_defs.clone();
-                                for (i, def_id) in param_defs.iter().enumerate() {
-                                    if i < arg_ops.len() {
-                                        let local =
-                                            self.new_local(format!("tco_p{}", i), Type::Error);
-                                        self.body.blocks[self.current_block].instructions.push(
-                                            Instruction::Assign(
-                                                local,
-                                                Rvalue::Use(arg_ops[i].clone()),
-                                            ),
-                                        );
-                                        self.write_variable(*def_id, local);
-                                    }
-                                }
-                                self.body.blocks.add_edge(
-                                    self.current_block,
-                                    self.header,
-                                    ControlFlow::Unconditional,
-                                );
-                                self.body.blocks[self.current_block].terminator =
-                                    Some(Terminator::Goto(self.header));
-                                return Rvalue::Use(Operand::Constant(Constant::Int(0)));
+                        let is_self_tail_call = matches!(
+                            &**callee,
+                            HirExpr::Ident(name, _, _, _) if name == &self.forge_name
+                        );
+                        if is_self_tail_call {
+                            // TCO transformation:
+                            let mut arg_ops: Vec<Operand> = Vec::new();
+                            for arg in args {
+                                let rv = self.lower_expr(arg);
+                                arg_ops.push(self.rvalue_to_operand(rv));
                             }
+                            // Re-assign params
+                            let param_defs = self.param_defs.clone();
+                            for (i, def_id) in param_defs.iter().enumerate() {
+                                if i < arg_ops.len() {
+                                    let local = self.new_local(format!("tco_p{}", i), Type::Error);
+                                    self.body.blocks[self.current_block].instructions.push(
+                                        Instruction::Assign(local, Rvalue::Use(arg_ops[i].clone())),
+                                    );
+                                    self.write_variable(*def_id, local);
+                                }
+                            }
+                            self.body.blocks.add_edge(
+                                self.current_block,
+                                self.header,
+                                ControlFlow::Unconditional,
+                            );
+                            self.body.blocks[self.current_block].terminator =
+                                Some(Terminator::Goto(self.header));
+                            return Rvalue::Use(Operand::Constant(Constant::Int(0)));
                         }
                     }
                     let rv = self.lower_expr(e);
@@ -497,10 +495,7 @@ mod tests {
                 has_back_edge = true;
             }
         }
-        assert!(
-            has_back_edge,
-            "TCO should have created a back-edge to the header block"
-        );
+        assert!(has_back_edge);
     }
 
     #[test]
@@ -548,10 +543,7 @@ mod tests {
                 }
             }
         }
-        assert!(
-            found_assert,
-            "MIR should contain an Assert instruction for the @requires contract"
-        );
+        assert!(found_assert);
     }
 
     #[test]
@@ -586,10 +578,7 @@ mod tests {
             .flat_map(|node| mir.blocks[node].instructions.iter())
             .any(|inst| matches!(inst, Instruction::Assert(_, _)));
 
-        assert!(
-            !found_assert,
-            "witness-typed call should not emit runtime contract asserts"
-        );
+        assert!(!found_assert);
     }
 
     #[test]
@@ -626,10 +615,7 @@ mod tests {
             .node_indices()
             .flat_map(|node| lowerer.body.blocks[node].instructions.iter())
             .any(|inst| matches!(inst, Instruction::Assert(_, _)));
-        assert!(
-            !found_assert,
-            "runtime contract asserts must be disabled unless check_contracts is enabled"
-        );
+        assert!(!found_assert);
     }
 
     #[test]
@@ -681,10 +667,7 @@ mod tests {
             }
         }
 
-        assert!(
-            found_post_assert,
-            "MIR should contain an Assert instruction for @ensures when runtime checks are enabled"
-        );
+        assert!(found_post_assert);
     }
 
     #[test]
@@ -727,8 +710,8 @@ mod tests {
             }
         }
 
-        assert!(found_enter, "MIR should contain ZoneEnter instruction");
-        assert!(found_exit, "MIR should contain ZoneExit instruction");
+        assert!(found_enter);
+        assert!(found_exit);
     }
 
     #[test]
