@@ -2,14 +2,15 @@
 
 This document lists specific test cases and edge cases required to verify the correctness, safety, and performance of the Izel compiler and language features.
 
-## Verification Snapshot (2026-03-30)
+## Verification Snapshot (2026-04-07)
 
+- [x] `pre-commit run --all-files`
 - [x] `cargo check --workspace --all-targets`
 - [x] `cargo test --workspace`
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - [x] `bash tools/ci/check_system_deps.sh`
-- [x] `bash tools/ci/check_coverage.sh --report-only` (workspace line coverage: `71.80%`)
+- [x] `bash tools/ci/check_coverage.sh --report-only` (last measured workspace line coverage baseline: `71.80%`, 2026-03-30)
 
 Status legend:
 - `[x]` means directly validated by executed automated checks and/or explicit regression tests.

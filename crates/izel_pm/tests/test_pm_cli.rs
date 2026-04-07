@@ -4,7 +4,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn run_izel_pm(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_izel_pm"))
+    Command::new(env!("CARGO_BIN_EXE_izel"))
         .args(args)
         .output()
         .expect("failed to execute izel_pm")

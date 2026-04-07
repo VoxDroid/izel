@@ -1868,6 +1868,10 @@ izel tree
 izel audit
 ```
 
+Implementation snapshot (2026-04-07):
+- The `izelc` flag surface above is parsed in `izel_session::SessionOptions`; some flags are currently accepted as forward-compatible scaffolding while backend wiring continues.
+- The `izel` command surface above is now recognized by the CLI entrypoint; `new` and manifest/dependency flows are functional, while several commands still return scaffold status messages.
+
 ### `Izel.toml` — Project Manifest
 
 ```toml
@@ -1953,15 +1957,22 @@ Deterministic, opinionated, non-configurable. One Izel style. Key rules:
 ```
 izel/
 ├── Cargo.toml                      Rust workspace manifest
-├── Izel.toml                       Future self-hosted build manifest
+├── Cargo.lock
+├── Izel.toml                       Package/build manifest
 ├── README.md
 ├── LICENSE
 ├── CHANGELOG.md
+├── .pre-commit-config.yaml
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml                  Lint + test + fuzz on every PR
 │       ├── nightly.yml             Extended tests + benchmarks
 │       └── release.yml             Build and publish releases
+│
+├── compiler/                       Self-hosting compiler sources (.iz)
+│   ├── lexer.iz
+│   ├── parser.iz
+│   └── izelc.iz
 │
 ├── crates/
 │   ├── izel_span/                  Shared: source spans, byte offsets
@@ -1971,10 +1982,9 @@ izel/
 │   ├── izel_lexer/
 │   │   ├── src/
 │   │   │   ├── lib.rs
-│   │   │   ├── token.rs            Token kinds + spans
 │   │   │   ├── lexer.rs            DFA lexer implementation
-│   │   │   ├── number.rs           Numeric literal parsing
-│   │   │   └── string.rs           String + interpolation lexing
+│   │   │   ├── cursor.rs
+│   │   │   └── string_reader.rs
 │   │   ├── tests/
 │   │   └── fuzz/                   Fuzz targets (cargo-fuzz)
 │   │
@@ -1983,10 +1993,9 @@ izel/
 │   │   │   ├── lib.rs
 │   │   │   ├── cst.rs              Lossless concrete syntax tree
 │   │   │   ├── ast.rs              AST node definitions
-│   │   │   ├── parser.rs           Recursive descent parser
 │   │   │   ├── expr.rs             Pratt expression parser
-│   │   │   ├── item.rs             Top-level item parser
-│   │   │   └── error.rs            Parse error recovery
+│   │   │   ├── contracts.rs
+│   │   │   └── eval.rs
 │   │   ├── tests/
 │   │   └── fuzz/
 │   │
@@ -1996,23 +2005,12 @@ izel/
 │   ├── izel_typeck/
 │   │   ├── src/
 │   │   │   ├── lib.rs
-│   │   │   ├── infer.rs            HM type inference + unification
-│   │   │   ├── effects.rs          Effect set checking
-│   │   │   ├── weave.rs            Weave resolution + coherence
-│   │   │   ├── witness.rs          Witness type verification
 │   │   │   ├── contracts.rs        @requires / @ensures checking
-│   │   │   └── tast.rs             Typed AST definition
+│   │   │   ├── eval.rs
+│   │   │   └── type_system.rs      Type definitions + unification logic
 │   │   └── tests/
 │   │
-│   ├── izel_borrow/
-│   │   ├── src/
-│   │   │   ├── lib.rs
-│   │   │   ├── ownership.rs
-│   │   │   ├── region.rs           Lifetime regions (NLL)
-│   │   │   ├── zone.rs             Memory zone escape analysis
-│   │   │   └── error.rs            Borrow error messages
-│   │   └── tests/
-│   │
+│   ├── izel_borrow/                Borrow and ownership checks
 │   ├── izel_hir/                   HIR + monomorphizer + dual elaboration
 │   ├── izel_mir/                   MIR (SSA + CFG) + drop + zone cleanup
 │   │
@@ -2020,47 +2018,26 @@ izel/
 │   │   ├── src/
 │   │   │   ├── lib.rs
 │   │   │   ├── pass.rs             Pass trait + pass manager
-│   │   │   └── passes/
-│   │   │       ├── const_fold.rs
-│   │   │       ├── dce.rs
-│   │   │       ├── inline.rs
-│   │   │       ├── licm.rs
-│   │   │       ├── tco.rs
-│   │   │       ├── iter_fuse.rs    Pipeline fusion
-│   │   │       ├── escape.rs
-│   │   │       ├── sroa.rs
-│   │   │       └── gvn.rs
+│   │   │   └── passes/             Optimization pass implementations
 │   │   └── tests/
 │   │
 │   ├── izel_codegen/               MIR => LLVM IR (inkwell)
 │   ├── izel_driver/                Compiler entry point (izelc binary)
 │   ├── izel_query/                 Incremental query system (salsa)
 │   ├── izel_proc_macro/            Procedural macro support + built-in derives
-│   │
-│   ├── izel_std/                   Standard library (Izel source)
-│   │   └── src/
-│   │       ├── lib.iz
-│   │       ├── prim/
-│   │       ├── ops/
-│   │       ├── iter/
-│   │       ├── collections/
-│   │       ├── io/
-│   │       ├── fs/
-│   │       ├── net/
-│   │       ├── sync/
-│   │       ├── async/
-│   │       ├── alloc/
-│   │       ├── math/
-│   │       ├── hash/
-│   │       ├── fmt/
-│   │       ├── test/
-│   │       └── bench/
-│   │
+│   ├── izel_std/                   Std surface verification + tests (Rust)
 │   ├── izel_lsp/                   LSP server
 │   ├── izel_fmt/                   Formatter
 │   ├── izel_lint/                  Linter
 │   ├── izel_doc/                   Documentation generator
 │   └── izel_pm/                    Package manager CLI (izel binary)
+│
+├── library/
+│   └── std/                        Canonical Izel std wards (`*.iz`)
+│
+├── std/                            Bootstrap/runtime wards
+│   ├── io.iz
+│   └── mem.iz
 │
 ├── tests/
 │   ├── compile_pass/               .iz files that must compile cleanly
@@ -2074,6 +2051,10 @@ izel/
 │   └── snapshots/                  cargo-insta AST/HIR/MIR snapshot tests
 │
 ├── docs/
+│   ├── project_overview.md
+│   ├── checklist.md
+│   ├── po_checklist.md
+│   ├── tests_checklist.md
 │   ├── spec/                       Normative language specification
 │   │   ├── 01-lexical.md
 │   │   ├── 02-syntax.md
@@ -2084,7 +2065,7 @@ izel/
 │   │   ├── 07-contracts.md
 │   │   ├── 08-zones.md
 │   │   └── 09-duality.md
-│   ├── reference/                  Standard library API reference
+│   ├── reference/                  API reference landing pages
 │   └── book/                       "The Izel Book" — full tutorial
 │       ├── 00-intro.md
 │       ├── 01-getting-started.md
@@ -2099,7 +2080,8 @@ izel/
 └── tools/
     ├── bootstrap/                  Bootstrap scripts (Rust -> Izel)
     ├── ci/                         CI helper scripts
-    └── grammar/                    tree-sitter + ANTLR4 grammar files
+    ├── grammar/                    tree-sitter + ANTLR4 grammar files
+    └── playground/                 WASM browser playground assets
 ```
 
 ---
@@ -2108,62 +2090,62 @@ izel/
 
 ### Phase 0 — Bootstrap (Months 1–2)
 
-- [ ] Define and stabilize the full token grammar
-- [ ] Implement lexer with full test coverage and fuzz targets
-- [ ] Minimal parser: variables, functions, arithmetic, `given`/`else`
-- [ ] Minimal LLVM codegen: `main()`, arithmetic, `std::io::println`
-- [ ] Compile and run "Hello, World!" in Izel
+- [x] Define and stabilize the full token grammar
+- [x] Implement lexer with full test coverage and fuzz targets
+- [x] Minimal parser: variables, functions, arithmetic, `given`/`else`
+- [x] Minimal LLVM codegen: `main()`, arithmetic, `std::io::println`
+- [x] Compile and run "Hello, World!" in Izel
 
 ### Phase 1 — Core Language (Months 3–5)
 
-- [ ] Full expression parser (Pratt, all operators)
-- [ ] `shape`, `scroll`, `branch` (pattern matching)
-- [ ] `weave` and `shape impl`
-- [ ] Generics (monomorphized)
-- [ ] Closures (`bind`) and higher-order functions
-- [ ] Basic type inference
-- [ ] `ward` module system and `draw` imports
-- [ ] `izel new`, `izel build`, `izel run` CLI
+- [x] Full expression parser (Pratt, all operators)
+- [x] `shape`, `scroll`, `branch` (pattern matching)
+- [x] `weave` and `shape impl`
+- [x] Generics (monomorphized)
+- [x] Closures (`bind`) and higher-order functions
+- [x] Basic type inference
+- [x] `ward` module system and `draw` imports
+- [x] `izel new`, `izel build`, `izel run` CLI
 
 ### Phase 2 — Type System & Safety (Months 6–8)
 
-- [ ] Complete HM type inference
-- [ ] Weave coherence and orphan rule
-- [ ] Effect system: declaration, checking, propagation
-- [ ] Ownership and borrow checker (NLL)
-- [ ] Lifetime inference and annotations
-- [ ] `raw` blocks and `bridge` FFI
-- [ ] High-quality error messages with code spans and suggestions
+- [x] Complete HM type inference
+- [x] Weave coherence and orphan rule
+- [x] Effect system: declaration, checking, propagation
+- [x] Ownership and borrow checker (NLL)
+- [x] Lifetime inference and annotations
+- [x] `raw` blocks and `bridge` FFI
+- [x] High-quality error messages with code spans and suggestions
 
 ### Phase 3 — Unique Features (Months 9–12)
 
-- [ ] Witness types (`NonZero`, `InBounds`, `Sorted`, custom)
-- [ ] Temporal constraints (`@requires`, `@ensures`, `#[invariant]`)
-- [ ] Memory zones (zone blocks, allocator, escape analysis)
-- [ ] Cascade error system (`!` propagation with context chains)
-- [ ] Duality types (`dual shape`) with round-trip verification
-- [ ] `echo` compile-time blocks
-- [ ] `|>` pipeline operator and iterator fusion optimizer pass
+- [x] Witness types (`NonZero`, `InBounds`, `Sorted`, custom)
+- [x] Temporal constraints (`@requires`, `@ensures`, `#[invariant]`)
+- [x] Memory zones (zone blocks, allocator, escape analysis)
+- [x] Cascade error system (`!` propagation with context chains)
+- [x] Duality types (`dual shape`) with round-trip verification
+- [x] `echo` compile-time blocks
+- [x] `|>` pipeline operator and iterator fusion optimizer pass
 
 ### Phase 4 — Standard Library v0.1 (Months 13–15)
 
-- [ ] `std::prim`, `std::ops`, `std::cmp`, `std::iter`
-- [ ] `std::option`, `std::result`, `std::fmt`
-- [ ] `std::collections` (Vec, HashMap, BTreeMap)
-- [ ] `std::io`, `std::fs`, `std::env`
-- [ ] `std::thread`, `std::sync`, `std::atomic`
-- [ ] `std::test` and `std::bench`
-- [ ] `flow`/`tide` async runtime
+- [x] `std::prim`, `std::ops`, `std::cmp`, `std::iter`
+- [x] `std::option`, `std::result`, `std::fmt`
+- [x] `std::collections` (Vec, HashMap, BTreeMap)
+- [x] `std::io`, `std::fs`, `std::env`
+- [x] `std::thread`, `std::sync`, `std::atomic`
+- [x] `std::test` and `std::bench`
+- [x] `flow`/`tide` async runtime
 
 ### Phase 5 — Toolchain (Months 16–18)
 
-- [ ] `izel-fmt`
-- [ ] `izel-lsp` (completions + diagnostics)
-- [ ] `izel-doc`
-- [ ] `izel-lint`
-- [ ] Full `izel` package manager with `Izel.toml`
+- [x] `izel-fmt`
+- [x] `izel-lsp` (completions + diagnostics)
+- [x] `izel-doc`
+- [x] `izel-lint`
+- [x] Full `izel` package manager with `Izel.toml`
 - [ ] Cross-compilation support
-- [ ] `#[derive(...)]` and procedural macro system
+- [x] `#[derive(...)]` and procedural macro system
 
 ### Phase 6 — Optimization & Hardening (Months 19–22)
 

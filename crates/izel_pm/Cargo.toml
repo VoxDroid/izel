@@ -11,3 +11,7 @@ description = "Package manager and dependency resolver for Izel."
 winnow = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
+
+[[bin]]
+name = "izel"
+path = "src/main.rs"

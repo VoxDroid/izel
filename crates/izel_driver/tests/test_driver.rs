@@ -332,3 +332,29 @@ fn test_commit_convention_checker_defines_required_types() {
         );
     }
 }
+
+#[test]
+fn test_project_structure_includes_license_and_reference_docs() {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let license = repo_root.join("LICENSE");
+    let reference = repo_root.join("docs/reference/README.md");
+
+    assert!(license.exists(), "expected LICENSE file at {:?}", license);
+    assert!(
+        reference.exists(),
+        "expected reference docs landing page at {:?}",
+        reference
+    );
+}
+
+#[test]
+fn test_izel_pm_exposes_izel_binary_name() {
+    let cargo_toml =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crates/izel_pm/Cargo.toml");
+    let src = fs::read_to_string(&cargo_toml)
+        .unwrap_or_else(|e| panic!("failed to read {:?}: {}", cargo_toml, e));
+
+    assert!(src.contains("[[bin]]"));
+    assert!(src.contains("name = \"izel\""));
+    assert!(src.contains("path = \"src/main.rs\""));
+}
