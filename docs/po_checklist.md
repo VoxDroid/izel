@@ -1,6 +1,6 @@
 # Izel Project Overview Checklist
 
-## Verification Snapshot (2026-04-07)
+## Verification Snapshot (2026-04-08)
 
 This checklist was reconciled against the repository using:
 
@@ -9,8 +9,8 @@ This checklist was reconciled against the repository using:
 - `cargo test --workspace` (pass)
 - `cargo fmt --all -- --check` (pass)
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings` (pass)
-- `bash tools/ci/check_system_deps.sh` (pass after installing `clang`, `lld`, `cmake`)
-- `bash tools/ci/check_coverage.sh --report-only` (last measured pass: `69.36%`, baseline from 2026-03-30)
+- `bash tools/ci/check_system_deps.sh` (pass)
+- `bash tools/ci/check_coverage.sh --report-only` (last measured pass: `99.99%`, measured on 2026-04-08)
 
 Key alignment notes:
 - Overview section 32 CLI surface is now aligned with implemented parser/entrypoint support for both `izelc` and `izel` (some commands remain scaffold-level behavior by design).
@@ -32,7 +32,7 @@ Key alignment notes:
 ## 4. Lexical Structure & Notation
 - [x] 4.1 File Extension (`.iz`, `.izm`)
 - [x] 4.2 Character Set (UTF-8, UAX #31)
-- [x] 4.3 Comments (`//`, `///`, `//!`, `/* */`)
+- [x] 4.3 Comments (`//`, `///`, `//!`, `/~ ... ~/`)
 - [x] 4.4 Sigils (`~`, `!`, `@`, `|>` etc.)
 - [x] 4.5 Keywords
 - [x] 4.6 Reserved Future Keywords
