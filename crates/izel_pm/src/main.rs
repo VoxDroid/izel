@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
-use std::io;
-use std::path::Path;
+use std::io::{self, ErrorKind};
+use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, Stdio};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +53,13 @@ enum Command {
     Tree,
     Audit,
     Help,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProjectLayout {
+    Cargo,
+    Izel,
+    Unknown,
 }
 
 fn usage() -> &'static str {
@@ -337,10 +344,7 @@ fn create_project(name: &str, kind: NewProjectKind) -> io::Result<()> {
             fs::create_dir_all(&src)?;
             let main_path = src.join("main.iz");
             if !main_path.exists() {
-                fs::write(
-                    &main_path,
-                    "draw std::io\n\nforge main() !io {\n    std::io::println(\"Hello, Izel!\")\n}\n",
-                )?;
+                fs::write(&main_path, "forge main() -> i32 {\n    42\n}\n")?;
             }
         }
         NewProjectKind::Lib => {
@@ -399,6 +403,172 @@ fn run_external(program: &str, args: &[String]) -> Result<(), String> {
 
 fn run_cargo(args: &[String]) -> Result<(), String> {
     run_external("cargo", args)
+}
+
+fn detect_project_layout() -> ProjectLayout {
+    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    if cwd.join("Cargo.toml").exists() {
+        ProjectLayout::Cargo
+    } else if cwd.join("Izel.toml").exists() {
+        ProjectLayout::Izel
+    } else {
+        ProjectLayout::Unknown
+    }
+}
+
+fn parse_bin_path_from_manifest(manifest_src: &str) -> Option<String> {
+    let mut in_bin = false;
+
+    for raw_line in manifest_src.lines() {
+        let line = raw_line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if line == "[[bin]]" {
+            in_bin = true;
+            continue;
+        }
+
+        if line.starts_with('[') && line.ends_with(']') {
+            in_bin = false;
+            continue;
+        }
+
+        if in_bin && line.starts_with("path") {
+            if let Some((_, rhs)) = line.split_once('=') {
+                let value = rhs.trim().trim_matches('"');
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn resolve_izel_entry_source() -> Result<PathBuf, String> {
+    let cwd = env::current_dir().map_err(|e| format!("failed to read current directory: {}", e))?;
+    let manifest_path = cwd.join("Izel.toml");
+    let mut candidates = Vec::new();
+
+    if let Ok(manifest_src) = fs::read_to_string(&manifest_path) {
+        if let Some(path) = parse_bin_path_from_manifest(&manifest_src) {
+            candidates.push(cwd.join(path));
+        }
+    }
+
+    candidates.push(cwd.join("src/main.iz"));
+    candidates.push(cwd.join("main.iz"));
+    candidates.push(cwd.join("src/lib.iz"));
+
+    if let Some(path) = candidates.iter().find(|p| p.exists()) {
+        return Ok(path.clone());
+    }
+
+    let expected = candidates
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    Err(format!(
+        "could not find an Izel entry source; expected one of: {}",
+        expected
+    ))
+}
+
+fn discover_izelc_candidates() -> Vec<String> {
+    let mut out = Vec::new();
+
+    if let Ok(explicit) = env::var("IZEL_PM_IZELC") {
+        let explicit = explicit.trim();
+        if !explicit.is_empty() {
+            out.push(explicit.to_string());
+        }
+    }
+
+    out.push("izelc".to_string());
+
+    if let Ok(current_exe) = env::current_exe() {
+        let sibling = current_exe.with_file_name("izelc");
+        if sibling.exists() {
+            out.push(sibling.to_string_lossy().to_string());
+        }
+    }
+
+    out.dedup();
+    out
+}
+
+fn run_izelc(args: &[String]) -> Result<(), String> {
+    if is_dry_run() {
+        println!("DRY-RUN: izelc {}", args.join(" "));
+        return Ok(());
+    }
+
+    for candidate in discover_izelc_candidates() {
+        let status = ProcessCommand::new(&candidate)
+            .args(args)
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status();
+
+        match status {
+            Ok(status) => {
+                if status.success() {
+                    return Ok(());
+                }
+
+                return Err(format!(
+                    "{} exited with status {}",
+                    candidate,
+                    status
+                        .code()
+                        .map(|c| c.to_string())
+                        .unwrap_or_else(|| "signal".to_string())
+                ));
+            }
+            Err(err) if err.kind() == ErrorKind::NotFound => {
+                continue;
+            }
+            Err(err) => {
+                return Err(format!("failed to run {}: {}", candidate, err));
+            }
+        }
+    }
+
+    Err(
+        "failed to locate izelc executable; install izelc or set IZEL_PM_IZELC=/path/to/izelc"
+            .to_string(),
+    )
+}
+
+fn build_izel_project(
+    release: bool,
+    target: Option<String>,
+    run_after_build: bool,
+) -> Result<(), String> {
+    let entry = resolve_izel_entry_source()?;
+    let mut args = vec![entry.to_string_lossy().to_string()];
+
+    if release {
+        args.push("-O".to_string());
+        args.push("3".to_string());
+    }
+
+    if let Some(t) = target {
+        args.push("--target".to_string());
+        args.push(t);
+    }
+
+    if run_after_build {
+        args.push("--run".to_string());
+    }
+
+    run_izelc(&args)
 }
 
 fn project_root_manifest_path() -> std::path::PathBuf {
@@ -575,25 +745,55 @@ fn execute_command(command: Command) -> Result<(), String> {
             Ok(())
         }
         Command::Build { release, target } => {
-            let mut args = vec!["build".to_string()];
-            if release {
-                args.push("--release".to_string());
+            match detect_project_layout() {
+                ProjectLayout::Cargo => {
+                    let mut args = vec!["build".to_string()];
+                    if release {
+                        args.push("--release".to_string());
+                    }
+                    if let Some(t) = target {
+                        args.push("--target".to_string());
+                        args.push(t);
+                    }
+                    run_cargo(&args)?;
+                }
+                ProjectLayout::Izel => {
+                    build_izel_project(release, target, false)?;
+                }
+                ProjectLayout::Unknown => {
+                    return Err(
+                        "no project manifest found (expected Cargo.toml or Izel.toml)".to_string(),
+                    );
+                }
             }
-            if let Some(t) = target {
-                args.push("--target".to_string());
-                args.push(t);
-            }
-            run_cargo(&args)?;
             println!("Build finished.");
             Ok(())
         }
         Command::Run { args } => {
-            let mut cargo_args = vec!["run".to_string()];
-            if !args.is_empty() {
-                cargo_args.push("--".to_string());
-                cargo_args.extend(args);
+            match detect_project_layout() {
+                ProjectLayout::Cargo => {
+                    let mut cargo_args = vec!["run".to_string()];
+                    if !args.is_empty() {
+                        cargo_args.push("--".to_string());
+                        cargo_args.extend(args);
+                    }
+                    run_cargo(&cargo_args)?;
+                }
+                ProjectLayout::Izel => {
+                    if !args.is_empty() {
+                        return Err(
+                            "izel run does not yet support forwarded runtime args for standalone Izel manifests"
+                                .to_string(),
+                        );
+                    }
+                    build_izel_project(false, None, true)?;
+                }
+                ProjectLayout::Unknown => {
+                    return Err(
+                        "no project manifest found (expected Cargo.toml or Izel.toml)".to_string(),
+                    );
+                }
             }
-            run_cargo(&cargo_args)?;
             println!("Run finished.");
             Ok(())
         }
@@ -1012,8 +1212,8 @@ mod tests {
 
         assert!(manifest_src.contains("[package]"));
         assert!(manifest_src.contains("[dependencies]"));
-        assert!(main_src.contains("draw std::io"));
-        assert!(main_src.contains("Hello, Izel!"));
+        assert!(main_src.contains("forge main() -> i32"));
+        assert!(main_src.contains("42"));
 
         let _ = fs::remove_dir_all(&root);
     }

@@ -235,6 +235,59 @@ fn cli_add_and_remove_update_manifest_dependencies() {
 }
 
 #[test]
+fn cli_build_in_izel_manifest_project_uses_izelc_path() {
+    let root = unique_temp_path("izel-build");
+    fs::create_dir_all(root.join("src")).expect("src directory should be created");
+    fs::write(
+        root.join("Izel.toml"),
+        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("manifest should be written");
+    fs::write(root.join("src/main.iz"), "forge main() -> i32 { 42 }\n")
+        .expect("main source should be written");
+
+    let output = run_izel_pm_in(&["build"], &root);
+    assert!(
+        output.status.success(),
+        "build command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("DRY-RUN: izelc"));
+    assert!(stdout.contains("Build finished."));
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn cli_run_in_izel_manifest_project_uses_izelc_with_run_flag() {
+    let root = unique_temp_path("izel-run");
+    fs::create_dir_all(root.join("src")).expect("src directory should be created");
+    fs::write(
+        root.join("Izel.toml"),
+        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\n",
+    )
+    .expect("manifest should be written");
+    fs::write(root.join("src/main.iz"), "forge main() -> i32 { 42 }\n")
+        .expect("main source should be written");
+
+    let output = run_izel_pm_in(&["run"], &root);
+    assert!(
+        output.status.success(),
+        "run command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("DRY-RUN: izelc"));
+    assert!(stdout.contains("--run"));
+    assert!(stdout.contains("Run finished."));
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn cli_usage_errors_cover_invalid_forms() {
     let cases: Vec<Vec<&str>> = vec![
         vec!["bench", "a", "b"],

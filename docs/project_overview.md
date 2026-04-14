@@ -1882,9 +1882,9 @@ izel tree
 izel audit
 ```
 
-Implementation snapshot (2026-04-07):
+Implementation snapshot (2026-04-14):
 - The `izelc` flag surface above is parsed in `izel_session::SessionOptions`; active backend behavior depends on the selected emit mode and target pipeline stage.
-- The `izel` command surface above is implemented in the CLI entrypoint with project creation, manifest/dependency editing, and cargo-backed build/test/doc workflows.
+- The `izel` command surface above is implemented in the CLI entrypoint with project creation, manifest/dependency editing, cargo-backed workflows for Cargo projects, and direct `izelc` build/run support for standalone `Izel.toml` projects.
 
 ### `Izel.toml` — Project Manifest
 
@@ -1930,16 +1930,12 @@ path = "src/main.iz"
 
 | Feature | Description |
 |---------|-------------|
-| Diagnostics | Real-time errors, warnings, hints |
-| Hover | Type signatures, doc comments, effect annotations |
-| Completion | Types, methods, fields, imports |
-| Go-to-definition | Any declaration in workspace or std |
-| Find references | All use sites of a symbol |
-| Rename | Semantic rename across workspace |
-| Code actions | Quick-fixes for common diagnostics |
-| Inlay hints | Inferred types, lifetimes, effects |
-| Semantic tokens | Full syntax highlighting data |
-| Format | Full-document and range formatting |
+| Diagnostics | Front-end type-check diagnostics are published on open/change |
+| Hover | Basic hover response wiring is available |
+| Completion | Completion capability and trigger characters (`.` and `::`) are advertised |
+
+Planned for later LSP increments: go-to-definition, references, rename, code actions,
+inlay hints, semantic tokens, and full formatting integration.
 
 ### `izel-fmt` — Formatter
 

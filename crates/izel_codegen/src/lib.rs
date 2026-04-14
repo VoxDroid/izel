@@ -7,7 +7,9 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::BasicType;
 
-use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue};
+use inkwell::values::{
+    BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue,
+};
 use inkwell::IntPredicate;
 use izel_hir::{HirForge, HirItem};
 use izel_mir::{
@@ -104,15 +106,23 @@ impl<'ctx, 'a> MirCodegen<'ctx, 'a> {
             }
             Instruction::Call(dest, name, args) => {
                 let gen_name = format!("_iz_{}", name);
-                let function = self
-                    .module
-                    .get_function(&gen_name)
-                    .ok_or_else(|| anyhow!("Function not found: {}", gen_name))?;
-
-                let mut llvm_args = Vec::new();
+                let mut llvm_args: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();
                 for arg in args {
                     llvm_args.push(self.gen_operand(arg, body)?.into());
                 }
+
+                let function = if let Some(existing) = self.module.get_function(&gen_name) {
+                    existing
+                } else {
+                    let fn_type = if let Some(dest_local) = dest {
+                        let ret_ty = llvm_type_static(self.context, &body.locals[dest_local.0].ty)?;
+                        ret_ty.fn_type(&[], true)
+                    } else {
+                        self.context.void_type().fn_type(&[], true)
+                    };
+
+                    self.module.add_function(&gen_name, fn_type, None)
+                };
 
                 let call = self.builder.build_call(function, &llvm_args, "call_tmp")?;
                 if let Some((dest_local, val)) = dest.as_ref().and_then(|dest_local| {

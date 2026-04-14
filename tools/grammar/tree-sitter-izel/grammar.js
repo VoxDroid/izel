@@ -73,7 +73,7 @@ module.exports = grammar({
 
     param: ($) => seq($.identifier, ":", $.type_expr),
 
-    type_expr: ($) => choice($.path, $.identifier, $.optional_type),
+    type_expr: ($) => choice($.path, $.optional_type),
 
     optional_type: ($) => seq("?", $.type_expr),
 
@@ -101,7 +101,8 @@ module.exports = grammar({
 
     assign_stmt: ($) => seq($.identifier, "=", $.expr, optional(";")),
 
-    return_stmt: ($) => seq(choice("give", "return"), optional($.expr), optional(";")),
+    return_stmt: ($) =>
+      prec.right(seq(choice("give", "return"), optional($.expr), optional(";"))),
 
     given_stmt: ($) =>
       seq(
@@ -120,7 +121,6 @@ module.exports = grammar({
         $.binary_expr,
         $.call_expr,
         $.path,
-        $.identifier,
         $.number,
         $.string,
         $.bool,

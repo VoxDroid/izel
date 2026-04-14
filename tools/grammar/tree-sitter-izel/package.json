@@ -4,12 +4,16 @@
   "description": "Tree-sitter grammar for the Izel language",
   "main": "grammar.js",
   "license": "MIT",
-  "keywords": ["tree-sitter", "grammar", "izel"],
+  "keywords": [
+    "tree-sitter",
+    "grammar",
+    "izel"
+  ],
   "devDependencies": {
     "tree-sitter-cli": "^0.22.6"
   },
   "scripts": {
-    "generate": "tree-sitter generate",
-    "test": "tree-sitter test"
+    "generate": "npx tree-sitter generate --no-bindings",
+    "test": "npm run generate && npx tree-sitter test"
   }
 }

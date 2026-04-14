@@ -56,8 +56,10 @@ Run the package manager entrypoint:
 ```bash
 cargo run -p izel_pm -- new demo --bin
 cd demo
-cargo run -p izel_pm -- build
+../target/debug/izel build
 ```
+
+If `izel` is installed on your PATH, use `izel build` instead of the relative binary path.
 
 ## Validation Commands
 

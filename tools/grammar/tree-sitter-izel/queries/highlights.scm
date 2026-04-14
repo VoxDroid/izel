@@ -17,7 +17,7 @@
 (bool) @constant.builtin
 
 ; Types and identifiers
-(type_expr (identifier) @type)
+(type_expr (path (identifier) @type))
 (forge_decl (identifier) @function)
 (call_expr (path (identifier) @function.call))
 (field_decl (identifier) @property)

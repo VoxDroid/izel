@@ -5,6 +5,15 @@
   "version": "0.1.0",
   "publisher": "voxdroid",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VoxDroid/izel.git",
+    "directory": "tools/grammar/vscode-izel"
+  },
+  "bugs": {
+    "url": "https://github.com/VoxDroid/izel/issues"
+  },
+  "homepage": "https://github.com/VoxDroid/izel/tree/main/tools/grammar/vscode-izel",
   "engines": {
     "vscode": "^1.85.0"
   },
