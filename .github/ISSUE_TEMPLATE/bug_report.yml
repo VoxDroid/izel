@@ -1,0 +1,95 @@
+name: Bug report
+description: Report a compiler, tooling, docs, or workflow bug.
+title: "[Bug]: "
+labels:
+  - bug
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug report.
+        Please provide enough detail for maintainers to reproduce and verify the issue.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which area is affected?
+      options:
+        - parser
+        - lexer
+        - type checker
+        - codegen
+        - lsp
+        - formatter
+        - package manager
+        - std library
+        - tests/ci
+        - docs
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: A short description of the problem.
+      placeholder: What failed and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: Provide exact steps and commands.
+      placeholder: |
+        1. Run ...
+        2. Compile ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: input
+    attributes:
+      label: Minimal Reproduction Input
+      description: Include minimal Izel code, config, or command input if applicable.
+      render: text
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Logs or Diagnostics
+      description: Paste compiler output, stack traces, or other diagnostics.
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: Commit/Version
+      description: Commit hash, tag, or branch tested.
+      placeholder: main (commit abc1234)
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Rust version, LLVM version.
+      placeholder: Windows 11, rustc 1.xx.x, LLVM 17
