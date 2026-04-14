@@ -1930,12 +1930,19 @@ path = "src/main.iz"
 
 | Feature | Description |
 |---------|-------------|
-| Diagnostics | Front-end type-check diagnostics are published on open/change |
-| Hover | Basic hover response wiring is available |
-| Completion | Completion capability and trigger characters (`.` and `::`) are advertised |
+| Diagnostics | Front-end parse/type-check diagnostics are published on open/change |
+| Hover | Hover endpoint is wired and currently returns a basic placeholder response |
+| Completion | Completion items are produced from core keywords/modules and document-local symbols |
+| Go to Definition | Available with document-local lexical symbol matching |
+| References | Available with document-local lexical symbol matching |
+| Rename | Prepare/rename endpoints are available for document-local symbol edits |
+| Code Actions | Quick fix placeholders and source format action are available |
+| Inlay Hints | Placeholder type hints are available for unannotated `let` bindings |
+| Semantic Tokens | Full and range semantic tokens are available from lexer token categories |
+| Formatting | Whole-document and range formatting are available via `izel-fmt` |
 
-Planned for later LSP increments: go-to-definition, references, rename, code actions,
-inlay hints, semantic tokens, and full formatting integration.
+Current LSP language intelligence is intentionally conservative and document-local in this phase.
+Later increments can layer resolver/type-aware cross-file semantics and richer hover/completion data.
 
 ### `izel-fmt` — Formatter
 

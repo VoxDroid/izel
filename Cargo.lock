@@ -625,6 +625,7 @@ version = "0.1.0"
 dependencies = [
  "izel_ast_lower",
  "izel_diagnostics",
+ "izel_fmt",
  "izel_lexer",
  "izel_parser",
  "izel_resolve",

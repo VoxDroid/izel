@@ -19,3 +19,4 @@ izel_diagnostics = { workspace = true }
 izel_resolve = { workspace = true }
 izel_typeck = { workspace = true }
 izel_ast_lower = { workspace = true }
+izel_fmt = { workspace = true }
