@@ -190,7 +190,7 @@ fn dce_clears_unreachable_blocks() {
 }
 
 #[test]
-fn optimization_pass_stubs_are_callable() {
+fn optimization_pass_helpers_are_callable() {
     let mut body = MirBody::new();
     PipelineFusion::run(&mut body);
     Licm::run(&mut body);
