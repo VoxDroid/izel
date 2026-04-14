@@ -1,5 +1,8 @@
-use izel_lexer::{Lexer, TokenKind};
-use izel_parser::{cst::SyntaxNode, Parser};
+use izel_lexer::{Lexer, Token, TokenKind};
+use izel_parser::{
+    cst::{NodeKind, SyntaxElement, SyntaxNode},
+    Parser,
+};
 use izel_resolve::{DefId, Resolver, Scope};
 use izel_span::{BytePos, SourceId, Span};
 use std::fs;
@@ -74,6 +77,15 @@ fn resolver_next_id_and_module_resolver_path_are_consistent() {
         .create_module_resolver(Path::new("examples/main.iz"))
         .expect("module resolver should be created");
     assert_eq!(sub.base_path.as_deref(), Some(Path::new("examples")));
+}
+
+#[test]
+fn resolver_create_module_resolver_handles_parentless_path() {
+    let resolver = Resolver::new(Some(PathBuf::from("examples")));
+    let sub = resolver
+        .create_module_resolver(Path::new("main.iz"))
+        .expect("module resolver should be created");
+    assert_eq!(sub.base_path.as_deref(), Some(Path::new(".")));
 }
 
 #[test]
@@ -164,9 +176,6 @@ fn resolver_load_module_covers_base_path_and_cached_module_branches() {
 
 #[test]
 fn resolver_manual_cst_paths_cover_impl_let_draw_and_default_branches() {
-    use izel_lexer::Token;
-    use izel_parser::cst::{NodeKind, SyntaxElement};
-
     fn span(lo: u32, hi: u32) -> Span {
         Span::new(BytePos(lo), BytePos(hi), SourceId(0))
     }
@@ -241,4 +250,23 @@ fn resolver_manual_cst_paths_cover_impl_let_draw_and_default_branches() {
     assert!(resolver.current_scope.resolve("inner").is_some());
 
     fs::remove_dir_all(base).expect("temp dir should be removable");
+}
+
+#[test]
+fn resolver_ignores_invalid_ident_spans_without_panicking() {
+    let invalid_ident = Token::new(
+        TokenKind::Ident,
+        Span::new(BytePos(99), BytePos(120), SourceId(0)),
+    );
+    let root = SyntaxNode::new(
+        NodeKind::SourceFile,
+        vec![SyntaxElement::Token(invalid_ident)],
+    );
+    let mut resolver = Resolver::default();
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        resolver.resolve_source_file(&root, "abc");
+    }));
+
+    assert!(result.is_ok());
 }

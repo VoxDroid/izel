@@ -122,7 +122,10 @@ impl Resolver {
         let resolver = Self {
             root_scope: root.clone(),
             current_scope: root,
-            base_path: Some(path.parent().unwrap().to_path_buf()),
+            base_path: Some(match path.parent() {
+                Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
+                _ => PathBuf::from("."),
+            }),
             loaded_csts: self.loaded_csts.clone(),
             def_ids: Arc::clone(&self.def_ids),
             next_def_id: Arc::clone(&self.next_def_id),
@@ -169,7 +172,10 @@ impl Resolver {
         let prev_base = self.base_path.clone();
 
         self.current_scope = new_mod_scope.clone();
-        self.base_path = Some(file_path.parent().unwrap().to_path_buf());
+        self.base_path = Some(match file_path.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
+            _ => base.clone(),
+        });
 
         self.resolve_source_file(&cst, &source);
 
@@ -190,6 +196,10 @@ impl Resolver {
 
     pub fn resolve_source_file(&mut self, node: &SyntaxNode, source: &str) {
         self.resolve_children(node, source);
+    }
+
+    fn span_text<'a>(&self, source: &'a str, span: Span) -> Option<&'a str> {
+        source.get(span.lo.0 as usize..span.hi.0 as usize)
     }
 
     fn resolve_children(&mut self, node: &SyntaxNode, source: &str) {
@@ -220,9 +230,10 @@ impl Resolver {
                 SyntaxElement::Token(t) => {
                     if t.kind == TokenKind::Ident {
                         let span = t.span;
-                        let name = source[span.lo.0 as usize..span.hi.0 as usize].to_string();
-                        if let Some(sym) = self.current_scope.resolve(&name) {
-                            self.def_ids.write().unwrap().insert(span, sym.def_id);
+                        if let Some(name) = self.span_text(source, span) {
+                            if let Some(sym) = self.current_scope.resolve(name) {
+                                self.def_ids.write().unwrap().insert(span, sym.def_id);
+                            }
                         }
                     }
                 }
@@ -234,8 +245,9 @@ impl Resolver {
         for child in &node.children {
             match child {
                 SyntaxElement::Token(t) if t.kind == TokenKind::Ident => {
-                    let name = source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
-                    let _ = self.current_scope.resolve(&name);
+                    if let Some(name) = self.span_text(source, t.span) {
+                        let _ = self.current_scope.resolve(name);
+                    }
                 }
                 SyntaxElement::Node(n) => self.resolve_children(n, source),
                 SyntaxElement::Token(_) => {}
@@ -249,12 +261,11 @@ impl Resolver {
 
         self.resolve_children(node, source);
 
-        let p = self
-            .current_scope
-            .parent
-            .clone()
-            .expect("Block scope must have parent");
-        self.current_scope = p;
+        if let Some(parent) = self.current_scope.parent.clone() {
+            self.current_scope = parent;
+        } else {
+            self.current_scope = self.root_scope.clone();
+        }
     }
 
     fn resolve_let_stmt(&mut self, node: &SyntaxNode, source: &str) {
@@ -270,12 +281,13 @@ impl Resolver {
                 SyntaxElement::Token(t)
                     if found_let_or_tilde && !defined_name && t.kind == TokenKind::Ident =>
                 {
-                    let name = source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
-                    let id = self.next_id();
-                    self.current_scope.define(name, t.span, id);
-                    self.def_ids.write().unwrap().insert(t.span, id);
-                    defined_name = true;
-                    // Continue to resolve the rest of the statement (e.g., the RHS)
+                    if let Some(name) = self.span_text(source, t.span) {
+                        let id = self.next_id();
+                        self.current_scope.define(name.to_string(), t.span, id);
+                        self.def_ids.write().unwrap().insert(t.span, id);
+                        defined_name = true;
+                        // Continue to resolve the rest of the statement (e.g., the RHS)
+                    }
                 }
                 SyntaxElement::Node(n)
                     if found_let_or_tilde
@@ -291,13 +303,13 @@ impl Resolver {
                     for pattern_child in &n.children {
                         if let SyntaxElement::Token(t) = pattern_child {
                             if t.kind == TokenKind::Ident {
-                                let name =
-                                    source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
-                                let id = self.next_id();
-                                self.current_scope.define(name, t.span, id);
-                                self.def_ids.write().unwrap().insert(t.span, id);
-                                defined_name = true;
-                                // Continue to resolve other parts of the pattern or the RHS
+                                if let Some(name) = self.span_text(source, t.span) {
+                                    let id = self.next_id();
+                                    self.current_scope.define(name.to_string(), t.span, id);
+                                    self.def_ids.write().unwrap().insert(t.span, id);
+                                    defined_name = true;
+                                    // Continue to resolve other parts of the pattern or the RHS
+                                }
                             }
                         }
                         // Recursively resolve children of the pattern node if they are nodes
@@ -324,11 +336,12 @@ impl Resolver {
                         found_kw = true;
                     } else if found_kw && token.kind == TokenKind::Ident {
                         let span = token.span;
-                        let name = source[span.lo.0 as usize..span.hi.0 as usize].to_string();
-                        let id = self.next_id();
-                        self.current_scope.define(name, span, id);
-                        self.def_ids.write().unwrap().insert(span, id);
-                        found_kw = false; // reset to avoid matching subsequent idents
+                        if let Some(name) = self.span_text(source, span) {
+                            let id = self.next_id();
+                            self.current_scope.define(name.to_string(), span, id);
+                            self.def_ids.write().unwrap().insert(span, id);
+                            found_kw = false; // reset to avoid matching subsequent idents
+                        }
                     }
                 }
                 SyntaxElement::Node(n) => {
@@ -346,12 +359,13 @@ impl Resolver {
                     found_kw = true;
                 } else if found_kw && token.kind == TokenKind::Ident {
                     let span = token.span;
-                    let name = source[span.lo.0 as usize..span.hi.0 as usize].to_string();
-                    let id = self.next_id();
+                    if let Some(name) = self.span_text(source, span) {
+                        let id = self.next_id();
 
-                    self.current_scope.define(name, span, id);
-                    self.def_ids.write().unwrap().insert(span, id);
-                    return;
+                        self.current_scope.define(name.to_string(), span, id);
+                        self.def_ids.write().unwrap().insert(span, id);
+                        return;
+                    }
                 }
             }
         }
@@ -365,23 +379,23 @@ impl Resolver {
 
         self.resolve_children(node, source);
 
-        let p = self
-            .current_scope
-            .parent
-            .clone()
-            .expect("Forge scope must have parent");
-        self.current_scope = p;
+        if let Some(parent) = self.current_scope.parent.clone() {
+            self.current_scope = parent;
+        } else {
+            self.current_scope = self.root_scope.clone();
+        }
     }
 
     fn resolve_param(&mut self, node: &SyntaxNode, source: &str) {
         for child in &node.children {
             match child {
                 SyntaxElement::Token(t) if t.kind == TokenKind::Ident => {
-                    let name = source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
-                    let id = self.next_id();
-                    self.current_scope.define(name, t.span, id);
-                    self.def_ids.write().unwrap().insert(t.span, id);
-                    return;
+                    if let Some(name) = self.span_text(source, t.span) {
+                        let id = self.next_id();
+                        self.current_scope.define(name.to_string(), t.span, id);
+                        self.def_ids.write().unwrap().insert(t.span, id);
+                        return;
+                    }
                 }
                 _ => {}
             }
@@ -397,9 +411,10 @@ impl Resolver {
                     found_ward = true;
                 } else if found_ward && token.kind == TokenKind::Ident {
                     let span = token.span;
-                    let name = source[span.lo.0 as usize..span.hi.0 as usize].to_string();
-                    name_info = Some((name, span));
-                    break;
+                    if let Some(name) = self.span_text(source, span) {
+                        name_info = Some((name.to_string(), span));
+                        break;
+                    }
                 }
             }
         }
@@ -431,8 +446,9 @@ impl Resolver {
             if let SyntaxElement::Token(t) = child {
                 match t.kind {
                     TokenKind::Ident => {
-                        let name = source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
-                        path.push((name, t.span));
+                        if let Some(name) = self.span_text(source, t.span) {
+                            path.push((name.to_string(), t.span));
+                        }
                     }
                     TokenKind::Star => {
                         is_wildcard = true;
@@ -462,7 +478,9 @@ impl Resolver {
             let symbol = current_scope.resolve_local(name);
             match symbol {
                 Some(sym) if sym.is_module => {
-                    current_scope = sym.module_scope.clone().unwrap();
+                    if let Some(module_scope) = sym.module_scope.clone() {
+                        current_scope = module_scope;
+                    }
                 }
                 None => {
                     let new_mod_scope = self

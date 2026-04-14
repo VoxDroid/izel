@@ -29,8 +29,7 @@ fn syntax_node_span_uses_first_and_last_child_spans() {
 }
 
 #[test]
-#[should_panic(expected = "Span requested for empty SyntaxNode")]
-fn syntax_node_span_panics_for_empty_children() {
+fn syntax_node_span_returns_dummy_for_empty_children() {
     let node = SyntaxNode::new(NodeKind::Error, vec![]);
-    let _ = node.span();
+    assert_eq!(node.span(), sp(0, 0));
 }

@@ -1,2 +1,2 @@
-[env]
-LLVM_SYS_170_PREFIX = "/usr/lib64/llvm17"
+# LLVM path is intentionally not hardcoded because it varies across platforms.
+# Use `bash tools/ci/with_llvm_env.sh <cargo ...>` or export LLVM_SYS_170_PREFIX.

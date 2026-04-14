@@ -8,6 +8,12 @@ This chapter takes you from a fresh clone to running an Izel source file.
 - LLVM 17 toolchain components for codegen-related crates.
 - Standard build tools (`clang`, `lld`, `cmake`, `zlib`).
 
+macOS quick setup:
+
+```bash
+brew install llvm@17 cmake
+```
+
 You can validate environment health with:
 
 ```bash
@@ -17,8 +23,8 @@ bash tools/ci/check_system_deps.sh
 ## Build The Workspace
 
 ```bash
-cargo check --workspace --all-targets
-cargo test --workspace
+bash tools/ci/with_llvm_env.sh cargo check --workspace --all-targets
+bash tools/ci/with_llvm_env.sh cargo test --workspace
 ```
 
 ## Try The Compiler Entry Point
@@ -26,7 +32,7 @@ cargo test --workspace
 Compile-mode path (front-end pipeline + LLVM IR emission):
 
 ```bash
-cargo run -p izel_driver -- examples/hello.iz
+bash tools/ci/with_llvm_env.sh cargo run -p izel_driver -- examples/hello.iz
 ```
 
 Format mode:
@@ -64,7 +70,7 @@ forge main() -> i32 {
 ## Development Loop
 
 ```bash
-cargo test --workspace
+bash tools/ci/with_llvm_env.sh cargo test --workspace
 pre-commit run --all-files
 ```
 

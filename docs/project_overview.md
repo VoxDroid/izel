@@ -49,6 +49,20 @@
 
 ---
 
+## Implementation Reality Note (2026-04-14)
+
+This document intentionally combines normative language design goals with roadmap/aspirational
+tooling surfaces. Treat it as a full vision reference, not a guarantee that every listed command
+or subsystem is production-complete today.
+
+For current implementation state and validated behavior, use these documents first:
+
+- [docs/checklist.md](checklist.md)
+- [docs/tests_checklist.md](tests_checklist.md)
+- [docs/book/01-getting-started.md](book/01-getting-started.md)
+
+---
+
 ## 1. Identity & Vision
 
 ### The Name

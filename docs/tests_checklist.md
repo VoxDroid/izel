@@ -2,13 +2,13 @@
 
 This document lists specific test cases and edge cases required to verify the correctness, safety, and performance of the Izel compiler and language features.
 
-## Verification Snapshot (2026-04-08)
+## Verification Snapshot (2026-04-14)
 
 - [x] `pre-commit run --all-files`
-- [x] `cargo check --workspace --all-targets`
-- [x] `cargo test --workspace`
+- [x] `bash tools/ci/with_llvm_env.sh cargo check --workspace --all-targets`
+- [x] `bash tools/ci/with_llvm_env.sh cargo test --workspace`
 - [x] `cargo fmt --all -- --check`
-- [x] `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+- [x] `bash tools/ci/with_llvm_env.sh cargo clippy --workspace --all-targets -- -D warnings`
 - [x] `bash tools/ci/check_system_deps.sh`
 - [x] `bash tools/ci/check_coverage.sh --report-only` (last measured workspace line coverage baseline: `99.99%`, 2026-04-08)
 

@@ -5,27 +5,39 @@
 ## Vision
 To create a systems programming language that gives developers absolute control over hardware while introducing novel constructs like **Effect Systems**, **Witness Types**, and **Memory Zones**.
 
-## Current Status: Foundation Scaffolding
-The project is currently in **Phase 0** of its [Implementation Checklist](docs/checklist.md).
-- [x] Workspace Initialization
-- [x] Core Infrastructure (`izel_span`, `izel_diagnostics`, `izel_session`)
-- [x] Minimal Lexer/Parser shells
-- [x] Compiler Driver (`izelc`)
+## Current Status: Active Multi-Phase Prototype
+The repository now contains a working multi-crate compiler/tooling pipeline (lexer, parser,
+resolver, AST lowerer, type checker, borrow checker, MIR, LLVM codegen, formatter, LSP, package
+manager). See [Implementation Checklist](docs/checklist.md) for roadmap-level tracking and
+[Tests Checklist](docs/tests_checklist.md) for validation depth.
 
 ## Getting Started
 
 ### Prerequisites
 - Rust (latest stable)
-- LLVM 17 (required for `inkwell`)
+- LLVM 17 (required for `inkwell`/`llvm-sys`)
+- CMake 3.20+
+
+On macOS:
+
+```bash
+brew install llvm@17 cmake
+```
+
+Verify dependencies:
+
+```bash
+bash tools/ci/check_system_deps.sh
+```
 
 ### Build
 ```bash
-cargo build --workspace
+bash tools/ci/with_llvm_env.sh cargo build --workspace
 ```
 
 ### Run Compiler
 ```bash
-cargo run --bin izelc -- examples/hello.iz
+bash tools/ci/with_llvm_env.sh cargo run --bin izelc -- examples/hello.iz
 ```
 
 ## Contributing

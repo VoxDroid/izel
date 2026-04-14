@@ -9,6 +9,60 @@ fi
 
 failures=0
 
+detect_llvm_prefix() {
+    local candidates=()
+
+    if [[ -n "${LLVM_SYS_170_PREFIX:-}" ]]; then
+        candidates+=("${LLVM_SYS_170_PREFIX}")
+    fi
+
+    if command -v llvm-config >/dev/null 2>&1; then
+        local llvm_bin
+        llvm_bin="$(command -v llvm-config)"
+        candidates+=("$(cd "$(dirname "${llvm_bin}")/.." && pwd)")
+    fi
+
+    if command -v llvm-config-17 >/dev/null 2>&1; then
+        local llvm17_bin
+        llvm17_bin="$(command -v llvm-config-17)"
+        candidates+=("$(cd "$(dirname "${llvm17_bin}")/.." && pwd)")
+    fi
+
+    if command -v brew >/dev/null 2>&1; then
+        local brew_prefix
+        brew_prefix="$(brew --prefix llvm@17 2>/dev/null || true)"
+        if [[ -n "${brew_prefix}" ]]; then
+            candidates+=("${brew_prefix}")
+        fi
+    fi
+
+    candidates+=(
+        "/opt/homebrew/opt/llvm@17"
+        "/usr/local/opt/llvm@17"
+        "/usr/lib/llvm-17"
+        "/usr/lib64/llvm17"
+    )
+
+    local candidate
+    for candidate in "${candidates[@]}"; do
+        if [[ -n "${candidate}" && -x "${candidate}/bin/llvm-config" ]]; then
+            echo "${candidate}"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+command_available() {
+    local cmd="$1"
+    if [[ "${cmd}" == */* ]]; then
+        [[ -x "${cmd}" ]]
+        return
+    fi
+    command -v "${cmd}" >/dev/null 2>&1
+}
+
 version_ge() {
     local got="$1"
     local want="$2"
@@ -28,7 +82,7 @@ check_tool_version() {
     local cmd="$2"
     local min="$3"
 
-    if ! command -v "$cmd" >/dev/null 2>&1; then
+    if ! command_available "$cmd"; then
         echo "[missing] ${label} (${cmd}) >= ${min}"
         failures=$((failures + 1))
         return
@@ -77,9 +131,24 @@ check_zlib() {
     fi
 }
 
+llvm_prefix="$(detect_llvm_prefix || true)"
+llvm_config_cmd="llvm-config"
+lld_cmd="ld.lld"
+
+if [[ -n "${llvm_prefix}" ]]; then
+    export LLVM_SYS_170_PREFIX="${llvm_prefix}"
+    export PATH="${llvm_prefix}/bin:${PATH}"
+    llvm_config_cmd="${llvm_prefix}/bin/llvm-config"
+    if [[ -x "${llvm_prefix}/bin/ld.lld" ]]; then
+        lld_cmd="${llvm_prefix}/bin/ld.lld"
+    elif [[ -x "${llvm_prefix}/bin/lld" ]]; then
+        lld_cmd="${llvm_prefix}/bin/lld"
+    fi
+fi
+
 echo "== Izel System Dependency Check =="
-check_tool_version "LLVM" "llvm-config" "17.0"
-check_tool_version "lld" "ld.lld" "17.0"
+check_tool_version "LLVM" "${llvm_config_cmd}" "17.0"
+check_tool_version "lld" "${lld_cmd}" "17.0"
 check_tool_version "clang" "clang" "17.0"
 check_tool_version "cmake" "cmake" "3.20"
 check_zlib

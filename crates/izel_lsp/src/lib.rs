@@ -136,8 +136,10 @@ pub async fn run_server() {
 }
 
 pub fn run_server_sync() {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(run_server());
+    match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt.block_on(run_server()),
+        Err(err) => eprintln!("failed to start izel_lsp runtime: {err}"),
+    }
 }
 
 #[cfg(test)]

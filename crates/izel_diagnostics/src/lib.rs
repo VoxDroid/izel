@@ -29,7 +29,9 @@ pub fn emit(source_map: &izel_span::SourceMap, diagnostic: &Diagnostic) {
 
     let writer = StandardStream::stderr(ColorChoice::Auto);
     let config = term::Config::default();
+    let mut lock = writer.lock();
 
-    term::emit(&mut writer.lock(), &config, source_map, diagnostic)
-        .expect("failed to emit diagnostic");
+    if let Err(err) = term::emit(&mut lock, &config, source_map, diagnostic) {
+        eprintln!("failed to emit diagnostic: {err}");
+    }
 }

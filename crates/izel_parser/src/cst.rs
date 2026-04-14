@@ -98,8 +98,12 @@ impl SyntaxNode {
 
     pub fn span(&self) -> izel_span::Span {
         if self.children.is_empty() {
-            // This should ideally not happen for non-empty source
-            panic!("Span requested for empty SyntaxNode: {:?}", self.kind);
+            // Keep span total even for recovery/empty nodes.
+            return izel_span::Span::new(
+                izel_span::BytePos(0),
+                izel_span::BytePos(0),
+                izel_span::SourceId(0),
+            );
         }
         let first = self.children.first().unwrap().span();
         let last = self.children.last().unwrap().span();

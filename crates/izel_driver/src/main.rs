@@ -6,7 +6,7 @@ fn main() -> Result<()> {
     let options = SessionOptions::parse();
     let session = Session::new(options);
 
-    println!("⬡ Izel Compiler (izelc) — Foundation Scaffolding Complete.");
+    println!("⬡ Izel Compiler (izelc) — Active Prototype Pipeline.");
     println!("Creator: @VoxDroid <izeno.contact@gmail.com>");
     println!("Repository: https://github.com/VoxDroid/izel\n");
 
@@ -44,7 +44,7 @@ fn main() -> Result<()> {
         .options
         .input
         .as_ref()
-        .expect("Input file required for compilation");
+        .ok_or_else(|| anyhow::anyhow!("Input file required for compilation"))?;
     let source = std::fs::read_to_string(input_path)?;
     let source_id = izel_span::SourceId(0);
     let mut lexer = izel_lexer::Lexer::new(&source, source_id);
