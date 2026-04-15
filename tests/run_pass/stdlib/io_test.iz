@@ -5,5 +5,17 @@ forge main() -> int {
     println("escape check: line1\nline2\t\x41")
     eprintln("runtime parity: eprintln")
     println_int(42)
+
+    let path = "tests/run_pass/stdlib/io_fixture_runtime.txt"
+    write_file(path, "ok")
+    println_int(io_last_status())
+
+    given file_exists_bool(path) {
+        println("exists")
+    }
+
+    remove_file(path)
+    println_int(io_last_status())
+
     give 0
 }

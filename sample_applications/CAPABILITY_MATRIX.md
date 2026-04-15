@@ -21,7 +21,7 @@ This matrix links project-overview functionality to concrete applications.
 | Duality types (`dual shape`) | 098 |
 | Wards/modules (`ward`) and boundary organization | 099 |
 | Stdin and file IO intrinsics (`read_stdin`, `read_file`, `write_file`) | 013, 083 |
-| File utility intrinsics (`append_file`, `remove_file`, `file_exists`, `list_dir`) | 013 |
+| File utility intrinsics (`append_file`, `remove_file`, `file_exists`, `file_exists_bool`, `list_dir`, `io_last_status`) | 013 |
 | Stdin numeric parsing intrinsics (`read_stdin_int`, `read_stdin_float`) | 083 |
 | Runtime std surfaces (`std/io`, `std/mem`, `std/tui`) | 001-100 (varied) |
 

@@ -42,3 +42,13 @@ forge file_exists(path: str) -> int
 forge list_dir(path: str) -> str
 forge read_stdin_int() -> int
 forge read_stdin_float() -> f64
+forge io_last_status() -> int
+forge file_exists_bool(path: str) -> bool
+forge try_read_stdin() -> Result<str, int>
+forge try_read_file(path: str) -> Result<str, int>
+forge try_write_file(path: str, content: str) -> Result<int, int>
+forge try_append_file(path: str, content: str) -> Result<int, int>
+forge try_remove_file(path: str) -> Result<int, int>
+forge try_list_dir(path: str) -> Result<str, int>
+forge try_read_stdin_int() -> Result<int, int>
+forge try_read_stdin_float() -> Result<f64, int>

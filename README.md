@@ -132,9 +132,11 @@ Use `free_str(...)` after use (the std `println_int(...)` helper already handles
 `read_stdin()` and `read_file(path)` return owned runtime string buffers; call `free_str(...)` after use.
 `write_file(path, content)` writes content to disk and returns the byte count (or `-1` on open failure).
 `append_file(path, content)` appends bytes and returns the appended byte count (or `-1` on open failure).
-`remove_file(path)` mirrors libc remove semantics (`0` success, nonzero failure), and `file_exists(path)` returns `1` when a path is present.
+`remove_file(path)` returns `0` on success and `-1` on failure.
+`file_exists(path)` returns `1` when a path is present, and `file_exists_bool(path)` provides a boolean helper.
 `list_dir(path)` returns an owned newline-delimited listing buffer that should be released with `free_str(...)` after use.
 `read_stdin_int()` and `read_stdin_float()` parse numeric input directly from stdin for interactive workflows.
+`io_last_status()` exposes the last runtime IO status code (`0` success, nonzero error).
 
 For frontend-only static serving (no runtime execution), use:
 

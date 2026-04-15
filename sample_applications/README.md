@@ -45,7 +45,7 @@ See `sample_applications/CAPABILITY_MATRIX.md` for a feature-to-app mapping tied
 | 010 | trip budget optimizer | witness proof flow |
 | 011 | sprint capacity planner | witness shape proof |
 | 012 | release burndown tracker | zones allocator |
-| 013 | customer churn monitor | memory intrinsic usage + file utility intrinsics |
+| 013 | customer churn monitor | memory intrinsic usage + file utility/status intrinsics |
 | 014 | marketing roi estimator | shape and impl methods |
 | 015 | startup runway analyzer | scroll and branch |
 | 016 | cashflow guardrail | weave implementation |

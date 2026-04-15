@@ -57,3 +57,9 @@ forge read_stdin_int() -> int
 
 @intrinsic("io_read_stdin_float")
 forge read_stdin_float() -> f64
+
+@intrinsic("io_last_status")
+forge io_last_status() -> int
+
+@intrinsic("io_file_exists_bool")
+forge file_exists_bool(path: str) -> bool

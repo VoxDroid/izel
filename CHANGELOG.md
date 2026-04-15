@@ -22,6 +22,8 @@ All notable changes to this project will be documented in this file.
 - Added runtime `std/io` file utility intrinsics: `io_append_file`, `io_remove_file`, `io_file_exists`, and `io_list_dir`.
 - Added runtime `std/io` numeric stdin parsing intrinsics: `io_read_stdin_int` and `io_read_stdin_float`.
 - Added runtime IO integration coverage for append/exists/remove/listing and numeric stdin parsing paths.
+- Added runtime `std/io` status intrinsic `io_last_status` and boolean helper intrinsic `io_file_exists_bool`.
+- Added explicit runtime IO missing-path and invalid numeric parse integration snapshots.
 
 ### Changed
 - Replaced transitional dual round-trip test body generation with an empty, valid body.
@@ -33,7 +35,9 @@ All notable changes to this project will be documented in this file.
 - Expanded `library/std/io` declarations to better match executable runtime std io APIs.
 - Expanded executable/declaration std IO surfaces with `read_stdin()`, `read_file(path)`, and `write_file(path, content)`.
 - Expanded executable/declaration std IO surfaces with `append_file(path, content)`, `remove_file(path)`, `file_exists(path)`, `list_dir(path)`, `read_stdin_int()`, and `read_stdin_float()`.
+- Runtime IO execution now uses native Rust helper symbols for dynamic stdin/file reads and directory listing (no shell command composition).
 - MIR let-lowering now infers local types from initializer expressions when metadata is missing, preventing unsafe str temporary lowering.
+- Mixed int/float binop lowering now promotes integers to `f64` for arithmetic/comparison compatibility.
 - Parser condition parsing now preserves full `given`/`while` boolean expressions while correctly respecting following blocks.
 - AST and MIR lowering now preserve control-flow nodes (`while`, `loop`, `each`) for ongoing runtime support expansion.
 

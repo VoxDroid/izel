@@ -330,6 +330,152 @@ forge main() -> int {{
 }
 
 #[test]
+fn runtime_io_missing_paths_surface_error_status() {
+    let missing_file = temp_data_file_path("missing", "txt");
+    let missing_dir = temp_data_dir_path("missing");
+    let escaped_file = missing_file
+        .to_string_lossy()
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"");
+    let escaped_dir = missing_dir
+        .to_string_lossy()
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"");
+
+    let source = format!(
+        r#"draw std/io
+
+forge main() -> int {{
+    let path = "{path}"
+    let dir = "{dir}"
+
+    let loaded = read_file(path)
+    free_str(loaded)
+    println_int(io_last_status())
+
+    let listed = list_dir(dir)
+    free_str(listed)
+    println_int(io_last_status())
+
+    let removed = remove_file(path)
+    println_int(removed)
+    println_int(io_last_status())
+    give 0
+}}
+"#,
+        path = escaped_file,
+        dir = escaped_dir
+    );
+
+    let input = temp_iz_file(&source);
+    let input_arg = input.to_string_lossy().to_string();
+
+    let output = run_izelc_from_repo(&["--run", &input_arg]);
+    let _ = fs::remove_file(&input);
+
+    assert!(
+        output.status.success(),
+        "compile+run failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    let runtime_stdout = extract_runtime_stdout(&stdout);
+    let values: Vec<i32> = runtime_stdout
+        .lines()
+        .map(|line| line.parse::<i32>().expect("runtime line should be an i32"))
+        .collect();
+    assert_eq!(
+        values.len(),
+        4,
+        "expected four status lines, got: {runtime_stdout}"
+    );
+    assert_ne!(
+        values[0], 0,
+        "read_file missing-path status should be nonzero"
+    );
+    assert_ne!(
+        values[1], 0,
+        "list_dir missing-path status should be nonzero"
+    );
+    assert_eq!(
+        values[2], -1,
+        "remove_file missing-path status should return -1"
+    );
+    assert_ne!(
+        values[3], 0,
+        "remove_file missing-path io_last_status should be nonzero"
+    );
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn runtime_io_bool_exists_and_status_helpers_work() {
+    let data_dir = temp_data_dir_path("try");
+    fs::create_dir(&data_dir).expect("failed to create runtime data directory");
+    let data_path = data_dir.join("try.txt");
+
+    let escaped_path = data_path
+        .to_string_lossy()
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"");
+    let escaped_dir = data_dir
+        .to_string_lossy()
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"");
+
+    let source = format!(
+        r#"draw std/io
+
+forge main() -> int {{
+    let path = "{path}"
+    let dir = "{dir}"
+    write_file(path, "alpha")
+    append_file(path, "\nbeta")
+    let listed = list_dir(dir)
+    print(listed)
+    free_str(listed)
+    println_int(io_last_status())
+
+    given file_exists_bool(path) {{
+        println("exists")
+    }}
+
+    remove_file(path)
+    give 0
+}}
+"#,
+        path = escaped_path,
+        dir = escaped_dir
+    );
+
+    let input = temp_iz_file(&source);
+    let input_arg = input.to_string_lossy().to_string();
+
+    let output = run_izelc_from_repo(&["--run", &input_arg]);
+    let _ = fs::remove_file(&input);
+
+    assert!(
+        output.status.success(),
+        "compile+run failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(extract_runtime_stdout(&stdout), "try.txt\n0\nexists\n");
+    assert_eq!(stderr, "");
+
+    let _ = fs::remove_file(&data_path);
+    let _ = fs::remove_dir(&data_dir);
+}
+
+#[test]
 fn runtime_io_stdin_numeric_parsing_snapshots() {
     let int_source = r#"draw std/io
 
@@ -361,7 +507,12 @@ forge main() -> int {
 
 forge main() -> int {
     let value = read_stdin_float()
-    println("float parsed")
+    given value > 3.0 {
+        println("gt")
+    }
+    given value <= 3.0 {
+        println("lte")
+    }
     give 0
 }
 "#;
@@ -380,6 +531,65 @@ forge main() -> int {
 
     let float_stdout = String::from_utf8_lossy(&float_output.stdout);
     let float_stderr = String::from_utf8_lossy(&float_output.stderr);
-    assert_eq!(extract_runtime_stdout(&float_stdout), "float parsed\n");
+    assert_eq!(extract_runtime_stdout(&float_stdout), "gt\n");
     assert_eq!(float_stderr, "");
+
+    let invalid_int_source = r#"draw std/io
+
+forge main() -> int {
+    let value = read_stdin_int()
+    println_int(value)
+    println_int(io_last_status())
+    give 0
+}
+"#;
+
+    let invalid_int_input = temp_iz_file(invalid_int_source);
+    let invalid_int_arg = invalid_int_input.to_string_lossy().to_string();
+    let invalid_int_output =
+        run_izelc_with_stdin_from_repo(&["--run", &invalid_int_arg], "not-a-number\n");
+    let _ = fs::remove_file(&invalid_int_input);
+
+    assert!(
+        invalid_int_output.status.success(),
+        "compile+run failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&invalid_int_output.stdout),
+        String::from_utf8_lossy(&invalid_int_output.stderr)
+    );
+
+    let invalid_int_stdout = String::from_utf8_lossy(&invalid_int_output.stdout);
+    let invalid_int_stderr = String::from_utf8_lossy(&invalid_int_output.stderr);
+    assert_eq!(extract_runtime_stdout(&invalid_int_stdout), "0\n-2\n");
+    assert_eq!(invalid_int_stderr, "");
+
+    let invalid_float_source = r#"draw std/io
+
+forge main() -> int {
+    read_stdin_float()
+    println("float-read")
+    println_int(io_last_status())
+    give 0
+}
+"#;
+
+    let invalid_float_input = temp_iz_file(invalid_float_source);
+    let invalid_float_arg = invalid_float_input.to_string_lossy().to_string();
+    let invalid_float_output =
+        run_izelc_with_stdin_from_repo(&["--run", &invalid_float_arg], "oops\n");
+    let _ = fs::remove_file(&invalid_float_input);
+
+    assert!(
+        invalid_float_output.status.success(),
+        "compile+run failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&invalid_float_output.stdout),
+        String::from_utf8_lossy(&invalid_float_output.stderr)
+    );
+
+    let invalid_float_stdout = String::from_utf8_lossy(&invalid_float_output.stdout);
+    let invalid_float_stderr = String::from_utf8_lossy(&invalid_float_output.stderr);
+    assert_eq!(
+        extract_runtime_stdout(&invalid_float_stdout),
+        "float-read\n-2\n"
+    );
+    assert_eq!(invalid_float_stderr, "");
 }

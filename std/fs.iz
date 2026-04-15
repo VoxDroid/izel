@@ -1,0 +1,25 @@
+draw std/io
+
+forge read_to_string_checked(path: str) -> str {
+    give read_file(path)
+}
+
+forge write_checked(path: str, contents: str) -> int {
+    give write_file(path, contents)
+}
+
+forge append(path: str, contents: str) -> int {
+    give append_file(path, contents)
+}
+
+forge remove(path: str) -> int {
+    give remove_file(path)
+}
+
+forge exists(path: str) -> bool {
+    give file_exists_bool(path)
+}
+
+forge list(path: str) -> str {
+    give list_dir(path)
+}
