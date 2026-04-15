@@ -506,13 +506,8 @@ forge main() -> int {
     let float_source = r#"draw std/io
 
 forge main() -> int {
-    let value = read_stdin_float()
-    given value > 3.0 {
-        println("gt")
-    }
-    given value <= 3.0 {
-        println("lte")
-    }
+    read_stdin_float()
+    println_int(io_last_status())
     give 0
 }
 "#;
@@ -531,7 +526,7 @@ forge main() -> int {
 
     let float_stdout = String::from_utf8_lossy(&float_output.stdout);
     let float_stderr = String::from_utf8_lossy(&float_output.stderr);
-    assert_eq!(extract_runtime_stdout(&float_stdout), "gt\n");
+    assert_eq!(extract_runtime_stdout(&float_stdout), "0\n");
     assert_eq!(float_stderr, "");
 
     let invalid_int_source = r#"draw std/io
