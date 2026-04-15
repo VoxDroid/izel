@@ -2,6 +2,8 @@ draw std/io
 
 forge main() -> int {
     println("Hello from std/io")
+    println("escape check: line1\nline2\t\x41")
+    eprintln("runtime parity: eprintln")
     println_int(42)
     give 0
 }

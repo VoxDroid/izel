@@ -254,12 +254,10 @@ impl<'ctx, 'a> MirCodegen<'ctx, 'a> {
                     Ok(self.context.bool_type().const_int(*b as u64, false).into())
                 }
                 Constant::Str(s) => {
-                    let literal = if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-                        &s[1..s.len() - 1]
-                    } else {
-                        s.as_str()
-                    };
-                    let global = self.builder.build_global_string_ptr(literal, "str_const")?;
+                    let literal = decode_izel_string_literal(s);
+                    let global = self
+                        .builder
+                        .build_global_string_ptr(&literal, "str_const")?;
                     Ok(global.as_pointer_value().into())
                 }
             },
@@ -313,6 +311,86 @@ impl<'ctx, 'a> MirCodegen<'ctx, 'a> {
             UnOp::Neg => Ok(self.builder.build_int_neg(v, "neg_tmp")?.into()),
         }
     }
+}
+
+fn decode_izel_string_literal(raw: &str) -> String {
+    let inner = if raw.len() >= 2 {
+        let first = raw.chars().next().unwrap_or('\0');
+        let last = raw.chars().last().unwrap_or('\0');
+        if (first == '"' && last == '"') || (first == '`' && last == '`') {
+            &raw[1..raw.len() - 1]
+        } else {
+            raw
+        }
+    } else {
+        raw
+    };
+
+    let mut out = String::new();
+    let mut chars = inner.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+
+        match chars.next() {
+            Some('n') => out.push('\n'),
+            Some('r') => out.push('\r'),
+            Some('t') => out.push('\t'),
+            Some('0') => out.push('\0'),
+            Some('\\') => out.push('\\'),
+            Some('"') => out.push('"'),
+            Some('\'') => out.push('\''),
+            Some('x') => {
+                let mut hex = String::new();
+                for _ in 0..2 {
+                    if let Some(peek) = chars.peek() {
+                        if peek.is_ascii_hexdigit() {
+                            hex.push(*peek);
+                            let _ = chars.next();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+
+                if let Ok(value) = u8::from_str_radix(&hex, 16) {
+                    out.push(value as char);
+                } else {
+                    out.push('x');
+                    out.push_str(&hex);
+                }
+            }
+            Some('u') => {
+                if chars.peek() == Some(&'{') {
+                    let _ = chars.next();
+                    let mut hex = String::new();
+                    for ch in chars.by_ref() {
+                        if ch == '}' {
+                            break;
+                        }
+                        if ch != '_' {
+                            hex.push(ch);
+                        }
+                    }
+
+                    if let Ok(value) = u32::from_str_radix(&hex, 16) {
+                        if let Some(unicode) = char::from_u32(value) {
+                            out.push(unicode);
+                            continue;
+                        }
+                    }
+                }
+                out.push('u');
+            }
+            Some(other) => out.push(other),
+            None => out.push('\\'),
+        }
+    }
+
+    out
 }
 
 pub fn llvm_type_static<'ctx>(
@@ -555,6 +633,12 @@ impl<'ctx, 'a> Codegen<'ctx, 'a> {
                     .build_call(snprintf, &snprintf_args, "snprintf")?;
                 self.builder.build_return(Some(&buf))?;
             }
+            "str_free" => {
+                let ptr = function.get_nth_param(0).unwrap().into_pointer_value();
+                let free = self.get_free()?;
+                self.builder.build_call(free, &[ptr.into()], "free_str")?;
+                self.builder.build_return(None)?;
+            }
             "mem_alloc" => {
                 let size = function.get_nth_param(0).unwrap().into_int_value();
                 let malloc = self.get_malloc()?;
@@ -754,6 +838,15 @@ mod tests {
             ensures: vec![],
             span: Span::dummy(),
         }
+    }
+
+    #[test]
+    fn test_decode_izel_string_literal_handles_quotes_and_escapes() {
+        let text = decode_izel_string_literal("\"line1\\nline2\\t\\x41\\u{1F600}\\\"\\\\\"");
+        assert_eq!(text, "line1\nline2\tA😀\"\\");
+
+        let raw = decode_izel_string_literal("plain\\ntext");
+        assert_eq!(raw, "plain\ntext");
     }
 
     #[test]
@@ -1028,6 +1121,13 @@ mod tests {
                 Type::Prim(PrimType::Str),
             ))),
             HirItem::Forge(Box::new(intrinsic_forge(
+                115,
+                "free_str",
+                "str_free",
+                vec![param(116, "msg", Type::Prim(PrimType::Str))],
+                Type::Prim(PrimType::Void),
+            ))),
+            HirItem::Forge(Box::new(intrinsic_forge(
                 103,
                 "alloc",
                 "mem_alloc",
@@ -1071,6 +1171,7 @@ mod tests {
         assert!(ir.contains("define void @_iz_print_nl()"));
         assert!(ir.contains("define void @_iz_print_str(ptr %0)"));
         assert!(ir.contains("define ptr @_iz_i32_to_str(i32 %0)"));
+        assert!(ir.contains("define void @_iz_free_str(ptr %0)"));
         assert!(ir.contains("declare i32 @printf(ptr, ...)"));
         assert!(ir.contains("declare i32 @snprintf(ptr, i64, ptr, ...)"));
         assert!(ir.contains("declare ptr @malloc(i64)"));
@@ -1569,6 +1670,13 @@ mod tests {
             vec![param(910, "v", Type::Prim(PrimType::I32))],
             Type::Prim(PrimType::Str),
         )));
+        let str_free = HirItem::Forge(Box::new(intrinsic_forge(
+            916,
+            "free_str",
+            "str_free",
+            vec![param(917, "msg", Type::Prim(PrimType::Str))],
+            Type::Prim(PrimType::Void),
+        )));
         let simd_sum = HirItem::Forge(Box::new(intrinsic_forge(
             911,
             "simd_sum",
@@ -1588,6 +1696,7 @@ mod tests {
             io_print_newline,
             io_print_str,
             i32_to_str,
+            str_free,
             simd_sum,
         ];
         for item in &items {

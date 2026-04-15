@@ -208,6 +208,33 @@ fn cli_compile_with_run_flag_executes_jit_path() {
 }
 
 #[test]
+fn cli_compile_with_run_flag_normalizes_string_escapes() {
+    let input = temp_file(
+        "iz",
+        r#"@intrinsic("io_print_str")
+forge print(msg: str)
+
+forge main() -> int {
+    print("line1\nline2\t\x41")
+    give 0
+}"#,
+    );
+    let input_arg = input.to_string_lossy().to_string();
+
+    let output = run_izelc(&["--run", &input_arg]);
+    let _ = fs::remove_file(&input);
+
+    assert!(
+        output.status.success(),
+        "compile+run command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("line1\nline2\tA"));
+}
+
+#[test]
 fn cli_compile_path_surfaces_type_errors() {
     let input = temp_file("iz", "forge main() -> i32 { true }");
     let input_arg = input.to_string_lossy().to_string();

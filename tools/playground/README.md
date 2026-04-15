@@ -32,6 +32,7 @@ The Run action (or Cmd/Ctrl+Enter) performs two stages:
 2. Runtime execution through a local API endpoint (`POST /api/run`) served by `server.js`, which runs `izel_driver --run` on a temporary source file.
 
 The runtime path supports string literals, so `println("hello")` style examples execute end-to-end.
+Escape sequences in string literals are normalized during codegen (for example `\n`, `\t`, `\x41`, `\u{1F600}`).
 
 If you want frontend-only behavior, use:
 

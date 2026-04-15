@@ -25,5 +25,11 @@ weave Seek {
 forge stdin() -> Stdin
 forge stdout() -> Stdout
 forge stderr() -> Stderr
+forge print(msg: str)
+forge print_int(val: int)
+forge to_str(val: int) -> str
+forge free_str(msg: str)
 forge println(msg: str)
+forge println_owned(msg: str)
+forge println_int(val: int)
 forge eprintln(msg: str)

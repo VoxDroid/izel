@@ -7,6 +7,9 @@ forge print_int(val: int)
 @intrinsic("i32_to_str")
 forge to_str(val: int) -> str
 
+@intrinsic("str_free")
+forge free_str(msg: str)
+
 @intrinsic("io_print_newline")
 forge println_newline()
 
@@ -15,7 +18,17 @@ forge println(msg: str) {
     println_newline()
 }
 
-forge println_int(val: int) {
-    print(to_str(val))
+forge println_owned(msg: str) {
+    print(msg)
+    free_str(msg)
     println_newline()
+}
+
+forge println_int(val: int) {
+    println_owned(to_str(val))
+}
+
+forge eprintln(msg: str) {
+    // Runtime currently routes both streams through host stdout.
+    println(msg)
 }
