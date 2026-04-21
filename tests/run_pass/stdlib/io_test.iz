@@ -9,10 +9,26 @@ forge main() -> int {
     let path = "tests/run_pass/stdlib/io_fixture_runtime.txt"
     write_file(path, "ok")
     println_int(io_last_status())
+    println(io_last_error_kind_name())
 
     given file_exists_bool(path) {
         println("exists")
     }
+
+    let loaded = try_read_file(path)
+    println(loaded)
+    free_str(loaded)
+
+    let listed = try_list_dir_structured("tests/run_pass/stdlib")
+    print(listed)
+    free_str(listed)
+
+    let bytes_path = "tests/run_pass/stdlib/io_fixture_runtime.bin"
+    try_write_file_bytes_hex(bytes_path, "000102ff")
+    let loaded_hex = try_read_file_bytes_hex(bytes_path)
+    println(loaded_hex)
+    free_str(loaded_hex)
+    remove_file(bytes_path)
 
     remove_file(path)
     println_int(io_last_status())

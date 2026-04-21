@@ -135,8 +135,48 @@ Use `free_str(...)` after use (the std `println_int(...)` helper already handles
 `remove_file(path)` returns `0` on success and `-1` on failure.
 `file_exists(path)` returns `1` when a path is present, and `file_exists_bool(path)` provides a boolean helper.
 `list_dir(path)` returns an owned newline-delimited listing buffer that should be released with `free_str(...)` after use.
+`list_dir_structured(path)` returns an owned tab-delimited `name<TAB>kind` listing (`kind` is `file`, `dir`, `symlink`, or `other`).
 `read_stdin_int()` and `read_stdin_float()` parse numeric input directly from stdin for interactive workflows.
 `io_last_status()` exposes the last runtime IO status code (`0` success, nonzero error).
+`io_last_error_kind()` exposes normalized runtime error categories (`0` ok, `1` not_found, `2` permission_denied, `3` already_exists, `4` interrupted, `5` parse_error, `6` invalid_input, `7` out_of_memory, `255` unknown).
+`io_error_kind_name(kind)` and `io_last_error_kind_name()` return readable error category names.
+`read_file_bytes_hex(path)` and `write_file_bytes_hex(path, hex)` provide binary-safe file IO via lowercase hex payloads.
+
+### std/io cookbook
+
+Status-first workflow with `try_*` wrappers and normalized error kinds:
+
+```iz
+draw std/io
+
+forge main() -> int {
+	let payload = try_read_file("input.txt")
+
+	given io_last_status_ok() {
+		println(payload)
+		free_str(payload)
+		give 0
+	}
+
+	free_str(payload)
+	println(io_last_error_kind_name())
+	give 1
+}
+```
+
+Binary-safe roundtrip with hex helpers:
+
+```iz
+draw std/io
+
+forge main() -> int {
+	write_file_bytes_hex("blob.bin", "000102ff")
+	let encoded = read_file_bytes_hex("blob.bin")
+	println(encoded)
+	free_str(encoded)
+	give 0
+}
+```
 
 For frontend-only static serving (no runtime execution), use:
 

@@ -24,6 +24,10 @@ All notable changes to this project will be documented in this file.
 - Added runtime IO integration coverage for append/exists/remove/listing and numeric stdin parsing paths.
 - Added runtime `std/io` status intrinsic `io_last_status` and boolean helper intrinsic `io_file_exists_bool`.
 - Added explicit runtime IO missing-path and invalid numeric parse integration snapshots.
+- Added runtime `std/io` error-kind intrinsic `io_last_error_kind` with normalized status categories.
+- Added runtime `std/io` structured listing and binary-safe hex intrinsics: `io_list_dir_structured`, `io_read_file_bytes_hex`, and `io_write_file_bytes_hex`.
+- Added runtime IO integration snapshots for try helpers, normalized error kinds, structured listings, bytes-hex IO, stress append workloads, and cross-platform path separators.
+- Added compile-pass std IO fixtures for status helpers and try helper surfaces.
 
 ### Changed
 - Replaced transitional dual round-trip test body generation with an empty, valid body.
@@ -35,7 +39,9 @@ All notable changes to this project will be documented in this file.
 - Expanded `library/std/io` declarations to better match executable runtime std io APIs.
 - Expanded executable/declaration std IO surfaces with `read_stdin()`, `read_file(path)`, and `write_file(path, content)`.
 - Expanded executable/declaration std IO surfaces with `append_file(path, content)`, `remove_file(path)`, `file_exists(path)`, `list_dir(path)`, `read_stdin_int()`, and `read_stdin_float()`.
+- Expanded executable/declaration std IO and fs surfaces with status-first `try_*` helpers, structured directory listing helpers, and bytes-hex file helpers.
 - Runtime IO execution now uses native Rust helper symbols for dynamic stdin/file reads and directory listing (no shell command composition).
+- Runtime documentation now includes a `std/io` cookbook covering status-first flows and binary-safe hex roundtrips.
 - MIR let-lowering now infers local types from initializer expressions when metadata is missing, preventing unsafe str temporary lowering.
 - Mixed int/float binop lowering now promotes integers to `f64` for arithmetic/comparison compatibility.
 - Parser condition parsing now preserves full `given`/`while` boolean expressions while correctly respecting following blocks.

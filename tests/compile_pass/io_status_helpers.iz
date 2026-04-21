@@ -1,0 +1,15 @@
+draw std/io
+
+forge main() -> int {
+    let status = io_last_status()
+    let kind = io_last_error_kind()
+    let _ok = io_status_ok(status)
+    let _kind_name = io_error_kind_name(kind)
+    let _last_name = io_last_error_kind_name()
+
+    given io_last_status_ok() {
+        println("status-ok")
+    }
+
+    give 0
+}

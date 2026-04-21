@@ -37,6 +37,58 @@ fn io_status_from_error(err: &std::io::Error) -> i32 {
     err.raw_os_error().unwrap_or(-1)
 }
 
+fn io_error_kind_from_status(status: i32) -> i32 {
+    match status {
+        0 => 0,
+        -2 => 5,
+        -12 => 7,
+        2 | 3 => 1,
+        5 | 13 => 2,
+        17 | 183 => 3,
+        4 => 4,
+        22 | 87 => 6,
+        _ => 255,
+    }
+}
+
+fn hex_nibble(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn encode_hex(bytes: &[u8]) -> String {
+    const LUT: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for &byte in bytes {
+        out.push(LUT[(byte >> 4) as usize] as char);
+        out.push(LUT[(byte & 0x0f) as usize] as char);
+    }
+    out
+}
+
+fn decode_hex(text: &str) -> Result<Vec<u8>, i32> {
+    let trimmed = text.trim();
+    if !trimmed.len().is_multiple_of(2) {
+        return Err(-2);
+    }
+
+    let bytes = trimmed.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len() / 2);
+    let mut idx = 0;
+    while idx < bytes.len() {
+        let hi = hex_nibble(bytes[idx]).ok_or(-2)?;
+        let lo = hex_nibble(bytes[idx + 1]).ok_or(-2)?;
+        out.push((hi << 4) | lo);
+        idx += 2;
+    }
+
+    Ok(out)
+}
+
 fn c_ptr_to_string(ptr: *const c_char) -> Option<String> {
     if ptr.is_null() {
         return None;
@@ -65,6 +117,11 @@ fn alloc_runtime_string(value: &str) -> *mut c_char {
 #[no_mangle]
 pub extern "C" fn izel_io_last_status() -> i32 {
     IO_LAST_STATUS.load(Ordering::Relaxed)
+}
+
+#[no_mangle]
+pub extern "C" fn izel_io_last_error_kind() -> i32 {
+    io_error_kind_from_status(IO_LAST_STATUS.load(Ordering::Relaxed))
 }
 
 #[no_mangle]
@@ -227,6 +284,103 @@ pub extern "C" fn izel_io_list_dir(path: *const c_char) -> *mut c_char {
         Err(err) => {
             set_io_last_status(io_status_from_error(&err));
             alloc_runtime_string("")
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn izel_io_list_dir_structured(path: *const c_char) -> *mut c_char {
+    let Some(path) = c_ptr_to_string(path) else {
+        set_io_last_status(-1);
+        return alloc_runtime_string("");
+    };
+
+    match std::fs::read_dir(path) {
+        Ok(entries) => {
+            let mut rows: Vec<(String, &'static str)> = entries
+                .filter_map(|entry| entry.ok())
+                .map(|entry| {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    let kind = match entry.file_type() {
+                        Ok(file_type) if file_type.is_dir() => "dir",
+                        Ok(file_type) if file_type.is_file() => "file",
+                        Ok(file_type) if file_type.is_symlink() => "symlink",
+                        Ok(_) => "other",
+                        Err(_) => "other",
+                    };
+                    (name, kind)
+                })
+                .collect();
+            rows.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+
+            let mut out = String::new();
+            for (name, kind) in rows {
+                out.push_str(&name);
+                out.push('\t');
+                out.push_str(kind);
+                out.push('\n');
+            }
+
+            set_io_last_status(0);
+            alloc_runtime_string(&out)
+        }
+        Err(err) => {
+            set_io_last_status(io_status_from_error(&err));
+            alloc_runtime_string("")
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn izel_io_read_file_bytes_hex(path: *const c_char) -> *mut c_char {
+    let Some(path) = c_ptr_to_string(path) else {
+        set_io_last_status(-1);
+        return alloc_runtime_string("");
+    };
+
+    match std::fs::read(path) {
+        Ok(contents) => {
+            set_io_last_status(0);
+            alloc_runtime_string(&encode_hex(&contents))
+        }
+        Err(err) => {
+            set_io_last_status(io_status_from_error(&err));
+            alloc_runtime_string("")
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn izel_io_write_file_bytes_hex(
+    path: *const c_char,
+    content_hex: *const c_char,
+) -> i32 {
+    let Some(path) = c_ptr_to_string(path) else {
+        set_io_last_status(-1);
+        return -1;
+    };
+    let Some(content_hex) = c_ptr_to_string(content_hex) else {
+        set_io_last_status(-1);
+        return -1;
+    };
+
+    let bytes = match decode_hex(&content_hex) {
+        Ok(bytes) => bytes,
+        Err(status) => {
+            set_io_last_status(status);
+            return -1;
+        }
+    };
+    let bytes_written = i32::try_from(bytes.len()).unwrap_or(i32::MAX);
+
+    match std::fs::write(path, &bytes) {
+        Ok(()) => {
+            set_io_last_status(0);
+            bytes_written
+        }
+        Err(err) => {
+            set_io_last_status(io_status_from_error(&err));
+            -1
         }
     }
 }
@@ -1055,6 +1209,48 @@ impl<'ctx, 'a> Codegen<'ctx, 'a> {
                     .into_pointer_value();
                 self.builder.build_return(Some(&out_buf))?;
             }
+            "io_list_dir_structured" => {
+                let path = function.get_nth_param(0).unwrap().into_pointer_value();
+                let rt = self.get_izel_io_list_dir_structured()?;
+                let call = self
+                    .builder
+                    .build_call(rt, &[path.into()], "rt_list_dir_structured")?;
+                let out_buf = call
+                    .try_as_basic_value()
+                    .left()
+                    .ok_or_else(|| anyhow!("izel_io_list_dir_structured did not return a buffer"))?
+                    .into_pointer_value();
+                self.builder.build_return(Some(&out_buf))?;
+            }
+            "io_read_file_bytes_hex" => {
+                let path = function.get_nth_param(0).unwrap().into_pointer_value();
+                let rt = self.get_izel_io_read_file_bytes_hex()?;
+                let call = self
+                    .builder
+                    .build_call(rt, &[path.into()], "rt_read_file_bytes_hex")?;
+                let out_buf = call
+                    .try_as_basic_value()
+                    .left()
+                    .ok_or_else(|| anyhow!("izel_io_read_file_bytes_hex did not return a buffer"))?
+                    .into_pointer_value();
+                self.builder.build_return(Some(&out_buf))?;
+            }
+            "io_write_file_bytes_hex" => {
+                let path = function.get_nth_param(0).unwrap().into_pointer_value();
+                let content_hex = function.get_nth_param(1).unwrap().into_pointer_value();
+                let rt = self.get_izel_io_write_file_bytes_hex()?;
+                let call = self.builder.build_call(
+                    rt,
+                    &[path.into(), content_hex.into()],
+                    "rt_write_file_bytes_hex",
+                )?;
+                let written = call
+                    .try_as_basic_value()
+                    .left()
+                    .ok_or_else(|| anyhow!("izel_io_write_file_bytes_hex did not return status"))?
+                    .into_int_value();
+                self.builder.build_return(Some(&written))?;
+            }
             "io_read_stdin_int" => {
                 let rt = self.get_izel_io_read_stdin_int()?;
                 let call = self.builder.build_call(rt, &[], "rt_read_stdin_int")?;
@@ -1084,6 +1280,16 @@ impl<'ctx, 'a> Codegen<'ctx, 'a> {
                     .ok_or_else(|| anyhow!("izel_io_last_status did not return a status"))?
                     .into_int_value();
                 self.builder.build_return(Some(&status))?;
+            }
+            "io_last_error_kind" => {
+                let rt = self.get_izel_io_last_error_kind()?;
+                let call = self.builder.build_call(rt, &[], "rt_io_last_error_kind")?;
+                let kind = call
+                    .try_as_basic_value()
+                    .left()
+                    .ok_or_else(|| anyhow!("izel_io_last_error_kind did not return a kind"))?
+                    .into_int_value();
+                self.builder.build_return(Some(&kind))?;
             }
             "io_print_newline" => {
                 let printf = self.get_printf()?;
@@ -1322,6 +1528,49 @@ impl<'ctx, 'a> Codegen<'ctx, 'a> {
         Ok(self.module.add_function("izel_io_list_dir", fn_type, None))
     }
 
+    fn get_izel_io_list_dir_structured(&self) -> Result<FunctionValue<'ctx>> {
+        if let Some(f) = self.module.get_function("izel_io_list_dir_structured") {
+            return Ok(f);
+        }
+        let ptr_type = self
+            .context
+            .i8_type()
+            .ptr_type(inkwell::AddressSpace::from(0));
+        let fn_type = ptr_type.fn_type(&[ptr_type.into()], false);
+        Ok(self
+            .module
+            .add_function("izel_io_list_dir_structured", fn_type, None))
+    }
+
+    fn get_izel_io_read_file_bytes_hex(&self) -> Result<FunctionValue<'ctx>> {
+        if let Some(f) = self.module.get_function("izel_io_read_file_bytes_hex") {
+            return Ok(f);
+        }
+        let ptr_type = self
+            .context
+            .i8_type()
+            .ptr_type(inkwell::AddressSpace::from(0));
+        let fn_type = ptr_type.fn_type(&[ptr_type.into()], false);
+        Ok(self
+            .module
+            .add_function("izel_io_read_file_bytes_hex", fn_type, None))
+    }
+
+    fn get_izel_io_write_file_bytes_hex(&self) -> Result<FunctionValue<'ctx>> {
+        if let Some(f) = self.module.get_function("izel_io_write_file_bytes_hex") {
+            return Ok(f);
+        }
+        let ptr_type = self
+            .context
+            .i8_type()
+            .ptr_type(inkwell::AddressSpace::from(0));
+        let i32_type = self.context.i32_type();
+        let fn_type = i32_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+        Ok(self
+            .module
+            .add_function("izel_io_write_file_bytes_hex", fn_type, None))
+    }
+
     fn get_izel_io_read_stdin_int(&self) -> Result<FunctionValue<'ctx>> {
         if let Some(f) = self.module.get_function("izel_io_read_stdin_int") {
             return Ok(f);
@@ -1353,6 +1602,17 @@ impl<'ctx, 'a> Codegen<'ctx, 'a> {
         Ok(self
             .module
             .add_function("izel_io_last_status", fn_type, None))
+    }
+
+    fn get_izel_io_last_error_kind(&self) -> Result<FunctionValue<'ctx>> {
+        if let Some(f) = self.module.get_function("izel_io_last_error_kind") {
+            return Ok(f);
+        }
+        let i32_type = self.context.i32_type();
+        let fn_type = i32_type.fn_type(&[], false);
+        Ok(self
+            .module
+            .add_function("izel_io_last_error_kind", fn_type, None))
     }
 
     fn get_snprintf(&self) -> Result<FunctionValue<'ctx>> {
@@ -1448,6 +1708,18 @@ impl<'ctx, 'a> Codegen<'ctx, 'a> {
         if let Some(f) = self.module.get_function("izel_io_list_dir") {
             execution_engine.add_global_mapping(&f, izel_io_list_dir as *const () as usize);
         }
+        if let Some(f) = self.module.get_function("izel_io_list_dir_structured") {
+            execution_engine
+                .add_global_mapping(&f, izel_io_list_dir_structured as *const () as usize);
+        }
+        if let Some(f) = self.module.get_function("izel_io_read_file_bytes_hex") {
+            execution_engine
+                .add_global_mapping(&f, izel_io_read_file_bytes_hex as *const () as usize);
+        }
+        if let Some(f) = self.module.get_function("izel_io_write_file_bytes_hex") {
+            execution_engine
+                .add_global_mapping(&f, izel_io_write_file_bytes_hex as *const () as usize);
+        }
         if let Some(f) = self.module.get_function("izel_io_read_stdin_int") {
             execution_engine.add_global_mapping(&f, izel_io_read_stdin_int as *const () as usize);
         }
@@ -1456,6 +1728,9 @@ impl<'ctx, 'a> Codegen<'ctx, 'a> {
         }
         if let Some(f) = self.module.get_function("izel_io_last_status") {
             execution_engine.add_global_mapping(&f, izel_io_last_status as *const () as usize);
+        }
+        if let Some(f) = self.module.get_function("izel_io_last_error_kind") {
+            execution_engine.add_global_mapping(&f, izel_io_last_error_kind as *const () as usize);
         }
 
         unsafe {
@@ -1859,6 +2134,30 @@ mod tests {
                 Type::Prim(PrimType::Str),
             ))),
             HirItem::Forge(Box::new(intrinsic_forge(
+                139,
+                "list_dir_structured",
+                "io_list_dir_structured",
+                vec![param(140, "path", Type::Prim(PrimType::Str))],
+                Type::Prim(PrimType::Str),
+            ))),
+            HirItem::Forge(Box::new(intrinsic_forge(
+                141,
+                "read_file_bytes_hex",
+                "io_read_file_bytes_hex",
+                vec![param(142, "path", Type::Prim(PrimType::Str))],
+                Type::Prim(PrimType::Str),
+            ))),
+            HirItem::Forge(Box::new(intrinsic_forge(
+                143,
+                "write_file_bytes_hex",
+                "io_write_file_bytes_hex",
+                vec![
+                    param(144, "path", Type::Prim(PrimType::Str)),
+                    param(145, "content_hex", Type::Prim(PrimType::Str)),
+                ],
+                Type::Prim(PrimType::I32),
+            ))),
+            HirItem::Forge(Box::new(intrinsic_forge(
                 134,
                 "read_stdin_int",
                 "io_read_stdin_int",
@@ -1876,6 +2175,13 @@ mod tests {
                 136,
                 "last_status",
                 "io_last_status",
+                vec![],
+                Type::Prim(PrimType::I32),
+            ))),
+            HirItem::Forge(Box::new(intrinsic_forge(
+                146,
+                "last_error_kind",
+                "io_last_error_kind",
                 vec![],
                 Type::Prim(PrimType::I32),
             ))),
@@ -1945,13 +2251,18 @@ mod tests {
         assert!(ir.contains("define i32 @_iz_file_exists(ptr %0)"));
         assert!(ir.contains("define i1 @_iz_file_exists_bool(ptr %0)"));
         assert!(ir.contains("define ptr @_iz_list_dir(ptr %0)"));
+        assert!(ir.contains("define ptr @_iz_list_dir_structured(ptr %0)"));
+        assert!(ir.contains("define ptr @_iz_read_file_bytes_hex(ptr %0)"));
+        assert!(ir.contains("define i32 @_iz_write_file_bytes_hex(ptr %0, ptr %1)"));
         assert!(ir.contains("define i32 @_iz_read_stdin_int()"));
         assert!(ir.contains("define double @_iz_read_stdin_float()"));
         assert!(ir.contains("define i32 @_iz_last_status()"));
+        assert!(ir.contains("define i32 @_iz_last_error_kind()"));
         assert!(ir.contains("define ptr @_iz_i32_to_str(i32 %0)"));
         assert!(ir.contains("define void @_iz_free_str(ptr %0)"));
         assert!(ir.contains("declare i32 @printf(ptr, ...)"));
         assert!(ir.contains("declare i32 @izel_io_last_status()"));
+        assert!(ir.contains("declare i32 @izel_io_last_error_kind()"));
         assert!(ir.contains("declare ptr @izel_io_read_stdin()"));
         assert!(ir.contains("declare ptr @izel_io_read_file(ptr)"));
         assert!(ir.contains("declare i32 @izel_io_write_file(ptr, ptr)"));
@@ -1959,6 +2270,9 @@ mod tests {
         assert!(ir.contains("declare i32 @izel_io_remove_file(ptr)"));
         assert!(ir.contains("declare i32 @izel_io_file_exists(ptr)"));
         assert!(ir.contains("declare ptr @izel_io_list_dir(ptr)"));
+        assert!(ir.contains("declare ptr @izel_io_list_dir_structured(ptr)"));
+        assert!(ir.contains("declare ptr @izel_io_read_file_bytes_hex(ptr)"));
+        assert!(ir.contains("declare i32 @izel_io_write_file_bytes_hex(ptr, ptr)"));
         assert!(ir.contains("declare i32 @izel_io_read_stdin_int()"));
         assert!(ir.contains("declare double @izel_io_read_stdin_float()"));
         assert!(ir.contains("declare i64 @strlen(ptr)"));
@@ -2054,6 +2368,27 @@ mod tests {
             rt_list_dir2.as_global_value().as_pointer_value()
         );
 
+        let rt_list_dir_structured1 = codegen.get_izel_io_list_dir_structured()?;
+        let rt_list_dir_structured2 = codegen.get_izel_io_list_dir_structured()?;
+        assert_eq!(
+            rt_list_dir_structured1.as_global_value().as_pointer_value(),
+            rt_list_dir_structured2.as_global_value().as_pointer_value()
+        );
+
+        let rt_read_bytes_hex1 = codegen.get_izel_io_read_file_bytes_hex()?;
+        let rt_read_bytes_hex2 = codegen.get_izel_io_read_file_bytes_hex()?;
+        assert_eq!(
+            rt_read_bytes_hex1.as_global_value().as_pointer_value(),
+            rt_read_bytes_hex2.as_global_value().as_pointer_value()
+        );
+
+        let rt_write_bytes_hex1 = codegen.get_izel_io_write_file_bytes_hex()?;
+        let rt_write_bytes_hex2 = codegen.get_izel_io_write_file_bytes_hex()?;
+        assert_eq!(
+            rt_write_bytes_hex1.as_global_value().as_pointer_value(),
+            rt_write_bytes_hex2.as_global_value().as_pointer_value()
+        );
+
         let rt_read_stdin_int1 = codegen.get_izel_io_read_stdin_int()?;
         let rt_read_stdin_int2 = codegen.get_izel_io_read_stdin_int()?;
         assert_eq!(
@@ -2073,6 +2408,13 @@ mod tests {
         assert_eq!(
             rt_last_status1.as_global_value().as_pointer_value(),
             rt_last_status2.as_global_value().as_pointer_value()
+        );
+
+        let rt_last_error_kind1 = codegen.get_izel_io_last_error_kind()?;
+        let rt_last_error_kind2 = codegen.get_izel_io_last_error_kind()?;
+        assert_eq!(
+            rt_last_error_kind1.as_global_value().as_pointer_value(),
+            rt_last_error_kind2.as_global_value().as_pointer_value()
         );
 
         let free1 = codegen.get_free()?;

@@ -1,19 +1,19 @@
 draw std/io
 
 forge read_to_string_checked(path: str) -> str {
-    give read_file(path)
+    give try_read_file(path)
 }
 
 forge write_checked(path: str, contents: str) -> int {
-    give write_file(path, contents)
+    give try_write_file(path, contents)
 }
 
 forge append(path: str, contents: str) -> int {
-    give append_file(path, contents)
+    give try_append_file(path, contents)
 }
 
 forge remove(path: str) -> int {
-    give remove_file(path)
+    give try_remove_file(path)
 }
 
 forge exists(path: str) -> bool {
@@ -21,5 +21,17 @@ forge exists(path: str) -> bool {
 }
 
 forge list(path: str) -> str {
-    give list_dir(path)
+    give try_list_dir(path)
+}
+
+forge list_structured(path: str) -> str {
+    give try_list_dir_structured(path)
+}
+
+forge read_bytes_hex(path: str) -> str {
+    give try_read_file_bytes_hex(path)
+}
+
+forge write_bytes_hex(path: str, contents_hex: str) -> int {
+    give try_write_file_bytes_hex(path, contents_hex)
 }

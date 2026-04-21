@@ -63,3 +63,135 @@ forge io_last_status() -> int
 
 @intrinsic("io_file_exists_bool")
 forge file_exists_bool(path: str) -> bool
+
+@intrinsic("io_last_error_kind")
+forge io_last_error_kind() -> int
+
+@intrinsic("io_list_dir_structured")
+forge list_dir_structured(path: str) -> str
+
+@intrinsic("io_read_file_bytes_hex")
+forge read_file_bytes_hex(path: str) -> str
+
+@intrinsic("io_write_file_bytes_hex")
+forge write_file_bytes_hex(path: str, content_hex: str) -> int
+
+forge io_status_ok(status: int) -> bool {
+    give status == 0
+}
+
+forge io_last_status_ok() -> bool {
+    give io_status_ok(io_last_status())
+}
+
+forge io_error_kind_ok() -> int {
+    give 0
+}
+
+forge io_error_kind_not_found() -> int {
+    give 1
+}
+
+forge io_error_kind_permission_denied() -> int {
+    give 2
+}
+
+forge io_error_kind_already_exists() -> int {
+    give 3
+}
+
+forge io_error_kind_interrupted() -> int {
+    give 4
+}
+
+forge io_error_kind_parse_error() -> int {
+    give 5
+}
+
+forge io_error_kind_invalid_input() -> int {
+    give 6
+}
+
+forge io_error_kind_out_of_memory() -> int {
+    give 7
+}
+
+forge io_error_kind_unknown() -> int {
+    give 255
+}
+
+forge io_error_kind_name(kind: int) -> str {
+    given kind == io_error_kind_ok() {
+        give "ok"
+    }
+    given kind == io_error_kind_not_found() {
+        give "not_found"
+    }
+    given kind == io_error_kind_permission_denied() {
+        give "permission_denied"
+    }
+    given kind == io_error_kind_already_exists() {
+        give "already_exists"
+    }
+    given kind == io_error_kind_interrupted() {
+        give "interrupted"
+    }
+    given kind == io_error_kind_parse_error() {
+        give "parse_error"
+    }
+    given kind == io_error_kind_invalid_input() {
+        give "invalid_input"
+    }
+    given kind == io_error_kind_out_of_memory() {
+        give "out_of_memory"
+    }
+    give "unknown"
+}
+
+forge io_last_error_kind_name() -> str {
+    give io_error_kind_name(io_last_error_kind())
+}
+
+forge try_read_stdin() -> str {
+    give read_stdin()
+}
+
+forge try_read_file(path: str) -> str {
+    give read_file(path)
+}
+
+forge try_write_file(path: str, content: str) -> int {
+    give write_file(path, content)
+}
+
+forge try_append_file(path: str, content: str) -> int {
+    give append_file(path, content)
+}
+
+forge try_remove_file(path: str) -> int {
+    give remove_file(path)
+}
+
+forge try_list_dir(path: str) -> str {
+    give list_dir(path)
+}
+
+forge try_list_dir_structured(path: str) -> str {
+    give list_dir_structured(path)
+}
+
+forge try_read_stdin_int() -> int {
+    give read_stdin_int()
+}
+
+forge try_read_stdin_float() -> f64 {
+    give read_stdin_float()
+}
+
+forge try_read_file_bytes_hex(path: str) -> str {
+    give read_file_bytes_hex(path)
+}
+
+forge try_write_file_bytes_hex(path: str, content_hex: str) -> int {
+    give write_file_bytes_hex(path, content_hex)
+}

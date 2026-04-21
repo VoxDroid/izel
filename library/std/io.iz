@@ -44,11 +44,31 @@ forge read_stdin_int() -> int
 forge read_stdin_float() -> f64
 forge io_last_status() -> int
 forge file_exists_bool(path: str) -> bool
-forge try_read_stdin() -> Result<str, int>
-forge try_read_file(path: str) -> Result<str, int>
-forge try_write_file(path: str, content: str) -> Result<int, int>
-forge try_append_file(path: str, content: str) -> Result<int, int>
-forge try_remove_file(path: str) -> Result<int, int>
-forge try_list_dir(path: str) -> Result<str, int>
-forge try_read_stdin_int() -> Result<int, int>
-forge try_read_stdin_float() -> Result<f64, int>
+forge io_last_error_kind() -> int
+forge list_dir_structured(path: str) -> str
+forge read_file_bytes_hex(path: str) -> str
+forge write_file_bytes_hex(path: str, content_hex: str) -> int
+forge io_status_ok(status: int) -> bool
+forge io_last_status_ok() -> bool
+forge io_error_kind_ok() -> int
+forge io_error_kind_not_found() -> int
+forge io_error_kind_permission_denied() -> int
+forge io_error_kind_already_exists() -> int
+forge io_error_kind_interrupted() -> int
+forge io_error_kind_parse_error() -> int
+forge io_error_kind_invalid_input() -> int
+forge io_error_kind_out_of_memory() -> int
+forge io_error_kind_unknown() -> int
+forge io_error_kind_name(kind: int) -> str
+forge io_last_error_kind_name() -> str
+forge try_read_stdin() -> str
+forge try_read_file(path: str) -> str
+forge try_write_file(path: str, content: str) -> int
+forge try_append_file(path: str, content: str) -> int
+forge try_remove_file(path: str) -> int
+forge try_list_dir(path: str) -> str
+forge try_list_dir_structured(path: str) -> str
+forge try_read_stdin_int() -> int
+forge try_read_stdin_float() -> f64
+forge try_read_file_bytes_hex(path: str) -> str
+forge try_write_file_bytes_hex(path: str, content_hex: str) -> int

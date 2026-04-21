@@ -1,0 +1,21 @@
+draw std/io
+draw std/fs
+
+forge main() -> int {
+    let path = "tests/compile_pass/io_try_helpers.tmp"
+
+    try_write_file(path, "alpha")
+    try_write_file_bytes_hex(path, "616263646566")
+
+    let loaded_hex = try_read_file_bytes_hex(path)
+    free_str(loaded_hex)
+
+    let listed = try_list_dir_structured("tests/compile_pass")
+    free_str(listed)
+
+    let fs_hex = read_bytes_hex(path)
+    free_str(fs_hex)
+
+    remove(path)
+    give 0
+}

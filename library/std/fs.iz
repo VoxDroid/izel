@@ -10,9 +10,12 @@ forge copy(src: str, dst: str) -> Result<u64, ()>
 forge create_dir(path: str) -> Result<void, ()>
 
 // Runtime-aligned fs APIs backed by std/io helper intrinsics.
-forge read_to_string_checked(path: str) -> Result<str, int>
-forge write_checked(path: str, contents: str) -> Result<int, int>
-forge append(path: str, contents: str) -> Result<int, int>
-forge remove(path: str) -> Result<int, int>
+forge read_to_string_checked(path: str) -> str
+forge write_checked(path: str, contents: str) -> int
+forge append(path: str, contents: str) -> int
+forge remove(path: str) -> int
 forge exists(path: str) -> bool
-forge list(path: str) -> Result<str, int>
+forge list(path: str) -> str
+forge list_structured(path: str) -> str
+forge read_bytes_hex(path: str) -> str
+forge write_bytes_hex(path: str, contents_hex: str) -> int
