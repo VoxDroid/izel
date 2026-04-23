@@ -271,17 +271,32 @@ impl Resolver {
     fn resolve_let_stmt(&mut self, node: &SyntaxNode, source: &str) {
         let mut defined_name = false;
         let mut found_let_or_tilde = false;
+        let mut saw_tilde = false;
         for child in &node.children {
             match child {
                 SyntaxElement::Token(t)
                     if t.kind == TokenKind::Let || t.kind == TokenKind::Tilde =>
                 {
                     found_let_or_tilde = true;
+                    if t.kind == TokenKind::Tilde {
+                        saw_tilde = true;
+                    }
                 }
                 SyntaxElement::Token(t)
                     if found_let_or_tilde && !defined_name && t.kind == TokenKind::Ident =>
                 {
                     if let Some(name) = self.span_text(source, t.span) {
+                        if saw_tilde {
+                            if let Some(existing) = self.current_scope.resolve(name) {
+                                self.def_ids
+                                    .write()
+                                    .unwrap()
+                                    .insert(t.span, existing.def_id);
+                                defined_name = true;
+                                continue;
+                            }
+                        }
+
                         let id = self.next_id();
                         self.current_scope.define(name.to_string(), t.span, id);
                         self.def_ids.write().unwrap().insert(t.span, id);
@@ -304,6 +319,17 @@ impl Resolver {
                         if let SyntaxElement::Token(t) = pattern_child {
                             if t.kind == TokenKind::Ident {
                                 if let Some(name) = self.span_text(source, t.span) {
+                                    if saw_tilde {
+                                        if let Some(existing) = self.current_scope.resolve(name) {
+                                            self.def_ids
+                                                .write()
+                                                .unwrap()
+                                                .insert(t.span, existing.def_id);
+                                            defined_name = true;
+                                            continue;
+                                        }
+                                    }
+
                                     let id = self.next_id();
                                     self.current_scope.define(name.to_string(), t.span, id);
                                     self.def_ids.write().unwrap().insert(t.span, id);

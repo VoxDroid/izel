@@ -84,8 +84,9 @@ Key alignment notes:
 
 ## 12. Control Flow
 - [x] 12.1 `given` / `else` (Conditionals)
-- [x] 12.2 Loops (`loop`, `while`, `each`)
-- [x] 12.3 `break`, `next` (continue)
+- [x] 12.2 `while` runtime coverage
+- [ ] 12.2 `loop` / `each` full runtime lowering
+- [ ] 12.3 `break`, `next` full runtime lowering
 
 ## 13. Closures & Lambdas
 - [x] Complete Implementation
@@ -160,7 +161,7 @@ Key alignment notes:
 - [x] 28.6 Borrow Checker (`izel_borrow`)
 - [x] 28.7 HIR (`izel_hir`)
 - [x] 28.8 MIR (`izel_mir`)
-- [x] 28.9 Optimizer (`izel_opt`)
+- [x] 28.9 Optimizer scaffolding (`izel_opt`) + MIR DCE (`izel_mir`)
 - [x] 28.10 Code Generation (`izel_codegen`)
 
 ## 29. Type System (Formal)

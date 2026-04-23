@@ -613,6 +613,7 @@ impl<'a> Lowerer<'a> {
             if let SyntaxElement::Node(n) = child {
                 if Some(i) == last_node_idx
                     && n.kind != NodeKind::LetStmt
+                    && n.kind != NodeKind::AssignStmt
                     && n.kind != NodeKind::GiveStmt
                 {
                     let expr_node = if n.kind == NodeKind::ExprStmt {
@@ -672,6 +673,34 @@ impl<'a> Lowerer<'a> {
                     pat,
                     ty,
                     init,
+                    span: node.span(),
+                }
+            }
+            NodeKind::AssignStmt => {
+                let mut target = None;
+                let mut expr = None;
+                let mut found_eq = false;
+
+                for child in &node.children {
+                    match child {
+                        SyntaxElement::Token(t) if t.kind == TokenKind::Equal => {
+                            found_eq = true;
+                        }
+                        SyntaxElement::Token(t) if !found_eq && t.kind == TokenKind::Ident => {
+                            let text =
+                                self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
+                            target = Some(ast::Expr::Ident(text, t.span));
+                        }
+                        SyntaxElement::Node(n) if found_eq => {
+                            expr = Some(self.lower_expr(n));
+                        }
+                        _ => {}
+                    }
+                }
+
+                ast::Stmt::Assign {
+                    target: target.unwrap_or(ast::Expr::Literal(ast::Literal::Nil)),
+                    expr: expr.unwrap_or(ast::Expr::Literal(ast::Literal::Nil)),
                     span: node.span(),
                 }
             }
@@ -2101,6 +2130,11 @@ impl<'a> Lowerer<'a> {
                 pat: pat.clone(),
                 ty: ty.clone(),
                 init: init.as_ref().map(|expr| self.substitute_expr(expr, subst)),
+                span: *span,
+            },
+            ast::Stmt::Assign { target, expr, span } => ast::Stmt::Assign {
+                target: self.substitute_expr(target, subst),
+                expr: self.substitute_expr(expr, subst),
                 span: *span,
             },
         }

@@ -94,8 +94,9 @@ For tutorial sequencing and category guidance, read:
 - `sample_applications/README.md`
 - `sample_applications/TUTORIAL.md`
 
-Runtime support for loop-heavy execution is under active expansion; the compile-first workflow above
-is the most reliable way to validate the full suite today.
+Runtime support for control-flow execution is under active expansion. `while` loops are covered by
+runtime integration tests, while broader `loop`/`each` lowering continues to expand; the compile-first
+workflow above remains the most reliable way to validate the full suite today.
 
 Proceed to ownership next. Almost every advanced Izel feature depends on understanding moves and
 borrows first.

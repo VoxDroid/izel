@@ -946,6 +946,35 @@ impl Parser {
                 vec![SyntaxElement::Node(self.parse_block())],
             ),
             _ => {
+                let is_plain_assign = if self.current_kind() == TokenKind::Ident {
+                    let mut offset = 1;
+                    while let Some(t) = self.tokens.get(self.pos + offset) {
+                        if t.kind == TokenKind::Whitespace || t.kind == TokenKind::Comment {
+                            offset += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    self.tokens
+                        .get(self.pos + offset)
+                        .is_some_and(|t| t.kind == TokenKind::Equal)
+                } else {
+                    false
+                };
+
+                if is_plain_assign {
+                    children.push(SyntaxElement::Token(self.bump())); // target ident
+                    children.extend(self.eat_trivia());
+                    children.push(SyntaxElement::Token(self.bump())); // =
+                    children.extend(self.eat_trivia());
+                    children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
+                    children.extend(self.eat_trivia());
+                    if self.current_kind() == TokenKind::Semicolon {
+                        children.push(SyntaxElement::Token(self.bump()));
+                    }
+                    return SyntaxNode::new(NodeKind::AssignStmt, children);
+                }
+
                 children.push(SyntaxElement::Node(self.parse_expr(Precedence::None)));
                 children.extend(self.eat_trivia());
                 if self.current_kind() == TokenKind::Semicolon {

@@ -735,11 +735,6 @@ fn runtime_io_large_append_and_special_path_stress() {
         .replace('\\', "\\\\")
         .replace('"', "\\\"");
 
-    let mut append_calls = String::new();
-    for _ in 0..256 {
-        append_calls.push_str("    append_file(path, \"0123456789abcdef\")\n");
-    }
-
     let source = format!(
         r#"draw std/io
 
@@ -747,7 +742,11 @@ forge main() -> int {{
     let path = "{path}"
     write_file(path, "")
 
-{append_calls}
+    ~i = 0
+    while i < 256 {{
+        append_file(path, "0123456789abcdef")
+        i = i + 1
+    }}
 
     println_int(io_last_status())
     let loaded = read_file(path)
@@ -757,7 +756,6 @@ forge main() -> int {{
 }}
 "#,
         path = escaped_path,
-        append_calls = append_calls,
     );
 
     let input = temp_iz_file(&source);
@@ -889,4 +887,104 @@ forge main() -> int {
 
     assert_eq!(extract_runtime_stdout(&stdout), "0\n5\n5\n");
     assert_eq!(stderr, "");
+}
+
+#[test]
+fn runtime_control_flow_while_plain_assignment_executes_iterations() {
+    let source = r#"draw std/io
+
+forge main() -> int {
+    ~i = 0
+    while i < 3 {
+        println_int(i)
+        i = i + 1
+    }
+    println("done")
+    give 0
+}
+"#;
+
+    let input = temp_iz_file(source);
+    let input_arg = input.to_string_lossy().to_string();
+    let output = run_izelc_from_repo(&["--run", &input_arg]);
+    let _ = fs::remove_file(&input);
+
+    assert!(
+        output.status.success(),
+        "compile+run failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(extract_runtime_stdout(&stdout), "0\n1\n2\ndone\n");
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn runtime_control_flow_while_tilde_reassignment_executes_iterations() {
+    let source = r#"draw std/io
+
+forge main() -> int {
+    ~i = 0
+    while i < 3 {
+        println_int(i)
+        ~i = i + 1
+    }
+    println("done")
+    give 0
+}
+"#;
+
+    let input = temp_iz_file(source);
+    let input_arg = input.to_string_lossy().to_string();
+    let output = run_izelc_from_repo(&["--run", &input_arg]);
+    let _ = fs::remove_file(&input);
+
+    assert!(
+        output.status.success(),
+        "compile+run failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(extract_runtime_stdout(&stdout), "0\n1\n2\ndone\n");
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn runtime_control_flow_each_placeholder_callee_reports_error_without_segfault() {
+    let source = r#"draw std/io
+
+forge main() -> int {
+    each x in [1, 2, 3] {
+        println_int(x)
+    }
+    println("each-done")
+    give 0
+}
+"#;
+
+    let input = temp_iz_file(source);
+    let input_arg = input.to_string_lossy().to_string();
+    let output = run_izelc_from_repo(&["--run", &input_arg]);
+    let _ = fs::remove_file(&input);
+
+    assert!(
+        !output.status.success(),
+        "expected compilation to fail cleanly"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("unresolved callee")
+            || stderr.contains("placeholder from earlier lowering"),
+        "missing unresolved-callee diagnostic\nstderr:\n{}",
+        stderr
+    );
 }

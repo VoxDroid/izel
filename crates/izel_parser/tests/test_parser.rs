@@ -136,6 +136,20 @@ forge main() {
 }
 
 #[test]
+fn parses_plain_assignment_statement_inside_block() {
+    let source = r#"
+forge main() {
+    let x = 0
+    x = x + 1
+    give x
+}
+"#;
+
+    let root = parse_source(source);
+    assert!(contains_kind(&root, NodeKind::AssignStmt));
+}
+
+#[test]
 fn parser_precedence_pipeline_vs_sum_keeps_pipeline_at_top_level() {
     let source = "forge main() { let x = a |> b + c }";
     let root = parse_source(source);

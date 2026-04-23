@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
 - Added runtime `std/io` structured listing and binary-safe hex intrinsics: `io_list_dir_structured`, `io_read_file_bytes_hex`, and `io_write_file_bytes_hex`.
 - Added runtime IO integration snapshots for try helpers, normalized error kinds, structured listings, bytes-hex IO, stress append workloads, and cross-platform path separators.
 - Added compile-pass std IO fixtures for status helpers and try helper surfaces.
+- Added parser/runtime regressions covering plain assignment statements and `while` loop execution for both `i = ...` and `~i = ...` update styles.
 
 ### Changed
 - Replaced transitional dual round-trip test body generation with an empty, valid body.
@@ -46,4 +47,9 @@ All notable changes to this project will be documented in this file.
 - Mixed int/float binop lowering now promotes integers to `f64` for arithmetic/comparison compatibility.
 - Parser condition parsing now preserves full `given`/`while` boolean expressions while correctly respecting following blocks.
 - AST and MIR lowering now preserve control-flow nodes (`while`, `loop`, `each`) for ongoing runtime support expansion.
+- Parser/AST/HIR/MIR lowering now supports explicit assignment statements (`name = expr`) in block bodies.
+- Resolver now treats `~name = expr` as a re-assignment when `name` is already bound in scope instead of always creating a new symbol.
+- MIR temporary locals now infer rvalue types so boolean conditions store/load with correct widths during control-flow lowering.
+- Restored `sample_applications/001_budget_forecast_calculator.iz` to loop-based forecasting logic after fixing runtime `while` execution.
+- Documentation now reflects current optimizer reality (`izel_opt` pass scaffolding vs implemented `izel_mir` DCE) and clarifies current runtime control-flow coverage.
 

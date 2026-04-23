@@ -36,5 +36,6 @@ done
 
 ## Runtime Expansion Note
 
-Loop-heavy runtime execution is under active expansion in the compiler/runtime pipeline.
-The sample suite is designed to remain compile-first reliable while runtime support continues to grow.
+Runtime control-flow execution is under active expansion in the compiler/runtime pipeline. `while`
+loops are runtime-validated, while broader `loop`/`each` lowering support continues to grow. The
+sample suite is designed to remain compile-first reliable while runtime support expands.

@@ -123,16 +123,22 @@ impl MirLowerer {
             } => {
                 if let Some(val_expr) = init {
                     let rvalue = self.lower_expr(val_expr);
-                    let local_ty = if matches!(ty, Type::Error) {
-                        self.infer_expr_type(val_expr)
+                    let local = if let Some(&existing) = self.vars.get(def_id) {
+                        existing
                     } else {
-                        ty.clone()
+                        let local_ty = if matches!(ty, Type::Error) {
+                            self.infer_expr_type(val_expr)
+                        } else {
+                            ty.clone()
+                        };
+                        let local = self.new_local(name.clone(), local_ty);
+                        self.write_variable(*def_id, local);
+                        local
                     };
-                    let local = self.new_local(name.clone(), local_ty);
+
                     self.body.blocks[self.current_block]
                         .instructions
                         .push(Instruction::Assign(local, rvalue));
-                    self.write_variable(*def_id, local);
                 }
             }
             HirStmt::Assign { def_id, expr, .. } => {
@@ -441,12 +447,65 @@ impl MirLowerer {
         match rvalue {
             Rvalue::Use(op) => op,
             _ => {
-                let local = self.new_local("tmp".to_string(), Type::Error);
+                let temp_ty = self.infer_rvalue_type(&rvalue);
+                let local = self.new_local("tmp".to_string(), temp_ty);
                 self.body.blocks[self.current_block]
                     .instructions
                     .push(Instruction::Assign(local, rvalue));
                 Operand::Move(local)
             }
+        }
+    }
+
+    fn operand_type(&self, operand: &Operand) -> Type {
+        match operand {
+            Operand::Copy(local) | Operand::Move(local) => self
+                .body
+                .locals
+                .get(local.0)
+                .map(|slot| slot.ty.clone())
+                .unwrap_or(Type::Error),
+            Operand::Constant(constant) => match constant {
+                Constant::Int(_) => Type::Prim(PrimType::I32),
+                Constant::Float(_) => Type::Prim(PrimType::F64),
+                Constant::Bool(_) => Type::Prim(PrimType::Bool),
+                Constant::Str(_) => Type::Prim(PrimType::Str),
+            },
+        }
+    }
+
+    fn infer_rvalue_type(&self, rvalue: &Rvalue) -> Type {
+        match rvalue {
+            Rvalue::Use(op) => self.operand_type(op),
+            Rvalue::Unary(op, inner) => match op {
+                UnOp::Not => Type::Prim(PrimType::Bool),
+                UnOp::Neg => self.operand_type(inner),
+            },
+            Rvalue::Binary(op, lhs, rhs) => match op {
+                BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
+                    Type::Prim(PrimType::Bool)
+                }
+                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
+                    let left_ty = self.operand_type(lhs);
+                    let right_ty = self.operand_type(rhs);
+                    if matches!(left_ty, Type::Prim(PrimType::F64))
+                        || matches!(right_ty, Type::Prim(PrimType::F64))
+                    {
+                        Type::Prim(PrimType::F64)
+                    } else if !matches!(left_ty, Type::Error) {
+                        left_ty
+                    } else if !matches!(right_ty, Type::Error) {
+                        right_ty
+                    } else {
+                        Type::Prim(PrimType::I32)
+                    }
+                }
+            },
+            Rvalue::Ref(_, _) => Type::Pointer(
+                Box::new(Type::Prim(PrimType::I8)),
+                false,
+                izel_typeck::type_system::Lifetime::Static,
+            ),
         }
     }
 

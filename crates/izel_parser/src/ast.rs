@@ -351,6 +351,11 @@ pub enum Stmt {
         init: Option<Expr>,
         span: Span,
     },
+    Assign {
+        target: Expr,
+        expr: Expr,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -605,6 +610,18 @@ impl AlphaEq for Stmt {
                         _ => false,
                     }
             }
+            (
+                Stmt::Assign {
+                    target: t1,
+                    expr: e1,
+                    ..
+                },
+                Stmt::Assign {
+                    target: t2,
+                    expr: e2,
+                    ..
+                },
+            ) => t1.alpha_eq(t2) && e1.alpha_eq(e2),
             _ => false,
         }
     }

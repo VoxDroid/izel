@@ -1,9 +1,14 @@
 draw std/io
 
 forge app001_budget_forecast_calculator_forecast(seed: int, gain: int, cost: int, windows: int) -> int {
-    let drift = gain - cost
-    let waves = windows * (windows - 1) / 2
-    give seed + (windows * drift) + waves
+    ~balance = seed
+    ~step = 0
+    while step < windows {
+        let wave = step
+        balance = balance + gain + wave - cost
+        step = step + 1
+    }
+    give balance
 }
 
 forge main() -> int {

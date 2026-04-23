@@ -164,6 +164,17 @@ impl<'a> HirLowerer<'a> {
                     span: *span,
                 }
             }
+            ast::Stmt::Assign { target, expr, span } => {
+                if let ast::Expr::Ident(_, ident_span) = target {
+                    HirStmt::Assign {
+                        def_id: self.get_def_id(*ident_span),
+                        expr: self.lower_expr(expr),
+                        span: *span,
+                    }
+                } else {
+                    HirStmt::Expr(self.lower_expr(expr))
+                }
+            }
             ast::Stmt::Expr(e) => HirStmt::Expr(self.lower_expr(e)),
         }
     }

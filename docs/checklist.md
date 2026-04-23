@@ -231,9 +231,9 @@ Note: this file is a long-range implementation roadmap. For evidence-tracked tes
         - [x] AST -> HIR -> MIR (SSA form).
     - [x] Passes:
         - [x] DCE (Dead Code Elimination).
-        - [x] TCO (Tail Call Optimization).
-        - [x] Pipeline Fusion.
-        - [x] LICM (Loop Invariant Code Motion).
+        - [ ] TCO optimizer pass (MIR lowering includes self-tail-call rewrite).
+        - [ ] Pipeline Fusion.
+        - [ ] LICM (Loop Invariant Code Motion).
 
 --- [x]
 ## Phase 7: Self-Hosting (Months 23+)

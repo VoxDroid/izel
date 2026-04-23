@@ -518,6 +518,13 @@ impl<'ctx, 'a> MirCodegen<'ctx, 'a> {
                     llvm_args.push(self.gen_operand(arg, body)?.into());
                 }
 
+                if matches!(name.as_str(), "<anon>" | "unknown") {
+                    return Err(anyhow!(
+                        "unresolved callee '{}' reached codegen (placeholder from earlier lowering)",
+                        name
+                    ));
+                }
+
                 let function = if let Some(existing) = self.module.get_function(&gen_name) {
                     existing
                 } else {

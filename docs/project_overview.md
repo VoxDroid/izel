@@ -146,7 +146,7 @@ Izel is not merely "another systems language." Below is a comparison of its nove
 
 **6. Composition, not inheritance.** `weave` (trait/interface) + implementation is the primary mechanism for polymorphism. Deep class hierarchies are an antipattern in Izel.
 
-**7. The pipeline is a first-class construct.** Data transformations are expressed as pipelines using `|>`. This is not sugar — the compiler understands and optimizes pipelines as fused loops.
+**7. The pipeline is a first-class construct.** Data transformations are expressed as pipelines using `|>`. Current compiler builds preserve pipeline semantics and lower chains as regular call composition; the dedicated fusion pass is scaffolded and under active implementation.
 
 **8. Compile time is powerful time.** Anything that can be resolved at compile time should be. `echo` blocks, `@requires`/`@ensures`, `Witness` types, and constant evaluation push work from runtime to compile time wherever possible.
 
@@ -813,6 +813,8 @@ each i in 0..10 { ... }
 }
 ```
 
+Runtime note: `while` loops are covered by runtime integration tests. Broader `loop`/`each` and `break`/`next` lowering remains under active expansion.
+
 ### 12.3 `break`, `next` (continue)
 
 ```izel
@@ -855,7 +857,7 @@ forge make_adder(n: i32) -> bind(i32) -> i32 {
 
 ## 14. Iterators & Pipelines
 
-Izel's `|>` pipeline operator and iterator combinators are a primary programming model. The compiler **fuses adjacent pipeline stages into single loops** at the MIR level — this is not sugar, it is a verified optimization.
+Izel's `|>` pipeline operator and iterator combinators are a primary programming model. Current compiler builds lower chained pipelines as regular call composition; the dedicated fusion pass is scaffolded and under active implementation.
 
 ### 14.1 The `|>` Operator
 
@@ -870,7 +872,7 @@ let evens_squared = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     |> map(bind |x| x * x)
     |> take(3)
     |> collect::<Vec<i32>>()
-// => [4, 16, 36]  (fused into one loop at compile time)
+// => [4, 16, 36]
 ```
 
 ### 14.2 Full Combinator List (std::iter)
@@ -1525,9 +1527,9 @@ Source (.iz files)
          |
          v
 +------------------+
-|  izel_opt        |  Constant folding/propagation, DCE, inlining,
-|                  |  TCO, LICM, pipeline fusion, escape analysis,
-|                  |  SROA, GVN, effect-based purity optimization
+|  izel_opt        |  Pass manager + optimization scaffolding
+|                  |  (const fold, inline, LICM, TCO, iter fuse,
+|                  |  escape, SROA, GVN). Core DCE lives in izel_mir.
 +--------+---------+
          |
          v
@@ -1636,18 +1638,18 @@ Desugars the following constructs into their canonical AST forms:
 
 | Pass | Description |
 |------|-------------|
-| Constant Folding | Evaluate `pure` expressions at compile time |
-| Constant Propagation | Propagate known SSA constants through the CFG |
-| Dead Code Elimination | Remove unreachable blocks and unused values |
-| Dead Store Elimination | Remove writes never subsequently read |
-| Inlining | Inline small functions by callee cost heuristic |
-| Loop Invariant Code Motion | Hoist loop-invariant computations |
-| Tail Call Optimization | Guaranteed TCO — all tail-recursive calls become loops |
-| Pipeline Fusion | Fuse adjacent `.map().filter()` chains into single loops |
-| Escape Analysis | Stack-promote heap allocations that don't escape |
-| Effect Optimization | Elide redundant effect checks for provably pure calls |
-| SROA | Split aggregates into independent scalars |
-| GVN | Global value numbering — eliminate redundant computations |
+| Constant Folding | `izel_opt` pass scaffolded (currently no-op) |
+| Constant Propagation | Planned (not implemented in current pass pipeline) |
+| Dead Code Elimination | Implemented in `izel_mir::optim::Dce` and covered by tests |
+| Dead Store Elimination | Partial via DCE assignment sweep; dedicated DSE pass pending |
+| Inlining | `izel_opt` pass scaffolded (currently no-op) |
+| Loop Invariant Code Motion | `izel_opt` pass scaffolded (currently no-op) |
+| Tail Call Optimization | Implemented during MIR lowering for self-tail calls; dedicated pass pending |
+| Pipeline Fusion | `izel_opt` pass scaffolded (currently no-op) |
+| Escape Analysis | `izel_opt` pass scaffolded (currently no-op) |
+| Effect Optimization | Planned (not yet wired as a transformation pass) |
+| SROA | `izel_opt` pass scaffolded (currently no-op) |
+| GVN | `izel_opt` pass scaffolded (currently no-op) |
 
 ### 28.10 Code Generation (`izel_codegen`)
 
@@ -2142,7 +2144,8 @@ izel/
 - [x] Cascade error system (`!` propagation with context chains)
 - [x] Duality types (`dual shape`) with round-trip verification
 - [x] `echo` compile-time blocks
-- [x] `|>` pipeline operator and iterator fusion optimizer pass
+- [x] `|>` pipeline operator
+- [ ] Iterator fusion optimizer pass (scaffolded in `izel_opt`)
 
 ### Phase 4 — Standard Library v0.1 (Months 13–15)
 
@@ -2166,7 +2169,8 @@ izel/
 
 ### Phase 6 — Optimization & Hardening (Months 19–22)
 
-- [x] Full MIR optimizer (all passes)
+- [ ] Full MIR optimizer (all passes)
+- [x] MIR DCE and self-tail-call rewrite in lowering
 - [x] SIMD intrinsics
 - [x] Full `comptime` evaluation
 - [x] Comprehensive snapshot + integration test suite

@@ -2,7 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+static TEMP_NONCE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn temp_file(ext: &str, content: &str) -> PathBuf {
     let mut path = std::env::temp_dir();
@@ -10,10 +13,12 @@ fn temp_file(ext: &str, content: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("system clock should be after UNIX epoch")
         .as_nanos();
+    let serial = TEMP_NONCE_COUNTER.fetch_add(1, Ordering::Relaxed);
     path.push(format!(
-        "izel-driver-test-{}-{}.{}",
+        "izel-driver-test-{}-{}-{}.{}",
         std::process::id(),
         nonce,
+        serial,
         ext
     ));
     fs::write(&path, content).expect("failed to write temp fixture");
@@ -73,7 +78,8 @@ fn cli_fmt_subcommand_reports_missing_file_error() {
         .duration_since(UNIX_EPOCH)
         .expect("system clock should be after UNIX epoch")
         .as_nanos();
-    missing.push(format!("izel-driver-missing-{}.iz", nonce));
+    let serial = TEMP_NONCE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    missing.push(format!("izel-driver-missing-{}-{}.iz", nonce, serial));
     let missing_arg = missing.to_string_lossy().to_string();
 
     let output = run_izelc(&["fmt", &missing_arg]);
@@ -123,7 +129,8 @@ fn cli_deps_subcommand_fails_for_missing_manifest() {
         .duration_since(UNIX_EPOCH)
         .expect("system clock should be after UNIX epoch")
         .as_nanos();
-    missing.push(format!("izel-driver-missing-{}.toml", nonce));
+    let serial = TEMP_NONCE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    missing.push(format!("izel-driver-missing-{}-{}.toml", nonce, serial));
     let missing_arg = missing.to_string_lossy().to_string();
 
     let output = run_izelc(&["deps", &missing_arg]);

@@ -168,6 +168,22 @@ fn eval_block(block: &crate::ast::Block, context: &HashMap<String, ConstValue>) 
                     return ConstValue::Unknown;
                 }
             }
+            Stmt::Assign { target, expr, .. } => {
+                let value = eval_expr(expr, &scoped);
+                if value == ConstValue::Unknown {
+                    return ConstValue::Unknown;
+                }
+
+                if let Expr::Ident(name, _) = target {
+                    if scoped.contains_key(name) {
+                        scoped.insert(name.clone(), value);
+                    } else {
+                        return ConstValue::Unknown;
+                    }
+                } else {
+                    return ConstValue::Unknown;
+                }
+            }
             Stmt::Expr(expr) => {
                 if eval_expr(expr, &scoped) == ConstValue::Unknown {
                     return ConstValue::Unknown;

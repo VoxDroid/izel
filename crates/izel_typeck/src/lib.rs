@@ -667,6 +667,34 @@ impl TypeChecker {
                             );
                     }
                 }
+                ast::Stmt::Assign { target, expr, .. } => {
+                    let value = eval_expr(expr, &const_context);
+                    if value == ConstValue::Unknown {
+                        self.diagnostics
+                            .push(izel_diagnostics::Diagnostic::error().with_message(
+                                "echo assignment is not compile-time evaluable".to_string(),
+                            ));
+                        continue;
+                    }
+
+                    if let ast::Expr::Ident(name, _) = target {
+                        if const_context.contains_key(name) {
+                            const_context.insert(name.clone(), value);
+                        } else {
+                            self.diagnostics.push(
+                                izel_diagnostics::Diagnostic::error().with_message(
+                                    "echo assignment target must reference an existing binding"
+                                        .to_string(),
+                                ),
+                            );
+                        }
+                    } else {
+                        self.diagnostics
+                            .push(izel_diagnostics::Diagnostic::error().with_message(
+                                "echo assignment target must be an identifier".to_string(),
+                            ));
+                    }
+                }
                 ast::Stmt::Expr(expr) => {
                     if eval_expr(expr, &const_context) == ConstValue::Unknown {
                         self.diagnostics
@@ -1507,6 +1535,32 @@ impl TypeChecker {
                         let fully_resolved_ty = self.prune(&scheme.ty);
                         self.def_types.insert(*def_id, fully_resolved_ty);
                     }
+                }
+                Type::Prim(PrimType::Void)
+            }
+            ast::Stmt::Assign { target, expr, .. } => {
+                let rhs_ty = self.infer_expr(expr);
+                if let ast::Expr::Ident(name, _) = target {
+                    if let Some(lhs_ty) = self.resolve_name(name) {
+                        if !self.unify(&lhs_ty, &rhs_ty) {
+                            self.diagnostics.push(
+                                izel_diagnostics::Diagnostic::error().with_message(format!(
+                                    "Type mismatch in assignment. Expected {:?}, found {:?}",
+                                    lhs_ty, rhs_ty
+                                )),
+                            );
+                        }
+                    } else {
+                        self.diagnostics.push(
+                            izel_diagnostics::Diagnostic::error()
+                                .with_message(format!("Unknown assignment target '{}'", name)),
+                        );
+                    }
+                } else {
+                    self.diagnostics.push(
+                        izel_diagnostics::Diagnostic::error()
+                            .with_message("Assignment target must be an identifier".to_string()),
+                    );
                 }
                 Type::Prim(PrimType::Void)
             }
