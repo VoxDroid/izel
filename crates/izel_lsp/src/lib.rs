@@ -1012,7 +1012,7 @@ impl Backend {
             ));
         }
 
-        absolute_tokens.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
+        absolute_tokens.sort_by_key(|a| (a.0, a.1));
 
         let mut out = Vec::with_capacity(absolute_tokens.len());
         let mut prev_line = 0u32;
