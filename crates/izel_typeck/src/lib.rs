@@ -2549,7 +2549,7 @@ impl TypeChecker {
             return None;
         }
 
-        ranked.sort_by(|a, b| b.0.cmp(&a.0));
+        ranked.sort_by_key(|entry| std::cmp::Reverse(entry.0));
         if ranked.len() > 1 && ranked[0].0 == ranked[1].0 {
             self.diagnostics
                 .push(izel_diagnostics::Diagnostic::error().with_message(format!(

@@ -260,7 +260,7 @@ impl<'a> Lowerer<'a> {
                 SyntaxElement::Node(n) if n.kind == NodeKind::Block => {
                     body = Some(self.lower_block(n));
                 }
-                SyntaxElement::Node(n) => {
+                SyntaxElement::Node(n)
                     // Could be the return type if it's not a block/params/effect/generic
                     if !matches!(
                         n.kind,
@@ -268,9 +268,9 @@ impl<'a> Lowerer<'a> {
                             | NodeKind::Block
                             | NodeKind::GenericParams
                             | NodeKind::Effect
-                    ) {
-                        ret_type = self.lower_type(n);
-                    }
+                    ) =>
+                {
+                    ret_type = self.lower_type(n);
                 }
                 _ => {}
             }
@@ -1514,10 +1514,8 @@ impl<'a> Lowerer<'a> {
                                 self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string(),
                             );
                         }
-                        SyntaxElement::Node(n) => {
-                            if body.is_none() {
-                                body = Some(self.lower_expr(n));
-                            }
+                        SyntaxElement::Node(n) if body.is_none() => {
+                            body = Some(self.lower_expr(n));
                         }
                         _ => {}
                     }
@@ -1791,10 +1789,10 @@ impl<'a> Lowerer<'a> {
                 SyntaxElement::Node(n) if n.kind == NodeKind::Attributes => {
                     attributes = self.lower_attributes(n);
                 }
-                SyntaxElement::Token(t) if t.kind == TokenKind::Ident && !in_body => {
-                    if name.is_empty() {
-                        name = self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
-                    }
+                SyntaxElement::Token(t)
+                    if t.kind == TokenKind::Ident && !in_body && name.is_empty() =>
+                {
+                    name = self.source[t.span.lo.0 as usize..t.span.hi.0 as usize].to_string();
                 }
                 SyntaxElement::Node(n)
                     if (n.kind == NodeKind::Type
